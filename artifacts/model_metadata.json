@@ -1,0 +1,49 @@
+{
+  "model_name": "civil_comments_tfidf_logistic_regression",
+  "dataset": "Jigsaw Civil Comments",
+  "task": "binary toxicity classification",
+  "text_column": "comment_text",
+  "source_score_column": "target",
+  "target_column": "toxic",
+  "target_rule": "target >= 0.5",
+  "random_state": 42,
+  "max_rows": 200000,
+  "validation_size": 0.2,
+  "default_threshold": 0.5,
+  "validation_best_f1_threshold": 0.6200000000000001,
+  "validation_metrics_at_0_5": {
+    "accuracy": 0.9311,
+    "precision": 0.5583662714097497,
+    "recall": 0.6623944982807127,
+    "f1": 0.6059479553903345,
+    "roc_auc": 0.9301762470454905,
+    "average_precision": 0.6700072327167321
+  },
+  "word_vectorizer": {
+    "analyzer": "word",
+    "ngram_range": [
+      1,
+      2
+    ],
+    "min_df": 3,
+    "max_features": 200000,
+    "sublinear_tf": true
+  },
+  "char_vectorizer": {
+    "analyzer": "char",
+    "ngram_range": [
+      3,
+      5
+    ],
+    "min_df": 3,
+    "max_features": 100000,
+    "sublinear_tf": true
+  },
+  "classifier": {
+    "type": "LogisticRegression",
+    "C": 4.0,
+    "class_weight": "balanced",
+    "solver": "liblinear",
+    "max_iter": 1000
+  }
+}
