@@ -12,3 +12,4 @@ data/
 mlruns/
 .DS_Store
 .env
+artifacts/

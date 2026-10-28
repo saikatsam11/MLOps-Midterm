@@ -1,0 +1,45 @@
+stages:
+  prepare:
+    cmd: python src/prepare.py
+    deps:
+      - src/prepare.py
+      - train.csv
+    params:
+      - data
+    outs:
+      - data/processed/train.csv
+      - data/processed/valid.csv
+
+  train:
+    cmd: python src/train.py
+    deps:
+      - src/train.py
+      - data/processed/train.csv
+    params:
+      - data.text_column
+      - data.label_column
+      - data.random_state
+      - features
+      - model
+    outs:
+      - artifacts/word_tfidf_vectorizer.joblib
+      - artifacts/char_tfidf_vectorizer.joblib
+      - artifacts/toxicity_logistic_regression.joblib
+
+  evaluate:
+    cmd: python src/evaluate.py
+    deps:
+      - src/evaluate.py
+      - data/processed/valid.csv
+      - artifacts/word_tfidf_vectorizer.joblib
+      - artifacts/char_tfidf_vectorizer.joblib
+      - artifacts/toxicity_logistic_regression.joblib
+    params:
+      - data.text_column
+      - data.label_column
+      - evaluation
+    outs:
+      - artifacts/model_metadata.json
+    metrics:
+      - metrics/metrics.json:
+          cache: false

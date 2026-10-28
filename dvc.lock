@@ -1,0 +1,124 @@
+schema: '2.0'
+stages:
+  prepare:
+    cmd: python src/prepare.py
+    deps:
+    - path: src/prepare.py
+      hash: md5
+      md5: 982dcac638533724e263064ce2aea584
+      size: 2302
+    - path: train.csv
+      hash: md5
+      md5: 7a687c299462dd009e90db97ac053eef
+      size: 816211476
+    params:
+      params.yaml:
+        data:
+          input: train.csv
+          text_column: comment_text
+          score_column: target
+          label_column: toxic
+          target_threshold: 0.5
+          max_rows: 200000
+          random_state: 42
+          validation_size: 0.2
+    outs:
+    - path: data/processed/train.csv
+      hash: md5
+      md5: 25bcf0368207c5ec07871c6353659c30
+      size: 48335808
+    - path: data/processed/valid.csv
+      hash: md5
+      md5: 147aced7c2578fc12139c5a41472b6b9
+      size: 12185711
+  train:
+    cmd: python src/train.py
+    deps:
+    - path: data/processed/train.csv
+      hash: md5
+      md5: 25bcf0368207c5ec07871c6353659c30
+      size: 48335808
+    - path: src/train.py
+      hash: md5
+      md5: 1875ceb6b1d9cc9ede6e337b4dd916a1
+      size: 2616
+    params:
+      params.yaml:
+        data.label_column: toxic
+        data.random_state: 42
+        data.text_column: comment_text
+        features:
+          word:
+            lowercase: true
+            strip_accents: unicode
+            ngram_min: 1
+            ngram_max: 2
+            min_df: 3
+            max_features: 200000
+            sublinear_tf: true
+          char:
+            lowercase: true
+            ngram_min: 3
+            ngram_max: 5
+            min_df: 3
+            max_features: 100000
+            sublinear_tf: true
+        model:
+          C: 4.0
+          class_weight: balanced
+          solver: liblinear
+          max_iter: 1000
+    outs:
+    - path: artifacts/char_tfidf_vectorizer.joblib
+      hash: md5
+      md5: a22cbd6f35e293746ae4fe575eac8eea
+      size: 3053123
+    - path: artifacts/toxicity_logistic_regression.joblib
+      hash: md5
+      md5: ff65461dc0e5845918bd290e266f4b41
+      size: 2400891
+    - path: artifacts/word_tfidf_vectorizer.joblib
+      hash: md5
+      md5: 196460abf643a15bee42bdce11547965
+      size: 7240519
+  evaluate:
+    cmd: python src/evaluate.py
+    deps:
+    - path: artifacts/char_tfidf_vectorizer.joblib
+      hash: md5
+      md5: a22cbd6f35e293746ae4fe575eac8eea
+      size: 3053123
+    - path: artifacts/toxicity_logistic_regression.joblib
+      hash: md5
+      md5: ff65461dc0e5845918bd290e266f4b41
+      size: 2400891
+    - path: artifacts/word_tfidf_vectorizer.joblib
+      hash: md5
+      md5: 196460abf643a15bee42bdce11547965
+      size: 7240519
+    - path: data/processed/valid.csv
+      hash: md5
+      md5: 147aced7c2578fc12139c5a41472b6b9
+      size: 12185711
+    - path: src/evaluate.py
+      hash: md5
+      md5: f00641cd1aa8395208a796acfe4345ce
+      size: 5681
+    params:
+      params.yaml:
+        data.label_column: toxic
+        data.text_column: comment_text
+        evaluation:
+          default_threshold: 0.5
+          threshold_min: 0.1
+          threshold_max: 0.9
+          threshold_step: 0.02
+    outs:
+    - path: artifacts/model_metadata.json
+      hash: md5
+      md5: 3b707aff6916ba4dce2e3b9f3cb61b5e
+      size: 1450
+    - path: metrics/metrics.json
+      hash: md5
+      md5: bdb916d2cc55384e4356cae65ff6b21f
+      size: 6970
