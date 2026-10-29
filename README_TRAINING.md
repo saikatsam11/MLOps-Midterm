@@ -92,11 +92,50 @@ than `bias.min_subgroup_size` (500) evaluation rows are listed under
 }
 ```
 
-## 5. Tests
+## 5. Fairness gate
+
+`scripts/fairness_gate.py` decides whether a newly trained model may replace
+the production model. It compares the candidate's `bias.json` with the
+production model's `bias.json`:
+
+```
+PROMOTE if
+    overall_auc                >= prod - 0.002
+    final_score                >= prod
+    subgroup_auc, every group  >= prod - 0.01
+    bpsn_auc,     every group  >= prod - 0.01
+BLOCK otherwise
+```
+
+Tolerances live in the `gate` section of `params.yaml`. A subgroup that is in
+production but missing from the candidate also blocks. BNSP is reported in
+`bias.json` but not gated.
+
+```bash
+# first model: no production baseline yet, always promoted
+python scripts/fairness_gate.py --candidate metrics/bias.json
+
+# compare against production
+python scripts/fairness_gate.py --candidate metrics/bias.json --production prod_bias.json
+```
+
+Exit code `0` = promote, `1` = blocked, so a CI stage fails on a block. Every
+check is printed as a table and saved to `metrics/gate_report.json` before
+the decision. A blocked run ends with the offending checks named, e.g.:
+
+```
+muslim.bpsn_auc      0.7451   0.7751  -0.0300  -0.0100  FAIL
+FAIRNESS GATE BLOCKED: 1 check(s) regressed: muslim.bpsn_auc
+```
+
+## 6. Tests
 
 ```bash
 pytest -q tests
 ```
 
-`tests/test_bias_metrics.py` checks every metric against values counted by
-hand on a small golden fixture.
+- `tests/test_bias_metrics.py` checks every metric against values counted by
+  hand on a small golden fixture.
+- `tests/test_fairness_gate.py` covers promotion, blocking on each check
+  (including a more accurate model that regresses one subgroup), tolerance
+  edges, a missing subgroup, no production baseline, and the CLI exit codes.

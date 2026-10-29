@@ -13,3 +13,4 @@ mlruns/
 .DS_Store
 .env
 artifacts/
+metrics/gate_report.json
