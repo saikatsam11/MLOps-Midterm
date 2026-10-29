@@ -4,6 +4,7 @@ Writes metrics/bias.json, which the fairness gate reads. The metric functions
 take plain arrays so any model's scores can be evaluated the same way.
 """
 from pathlib import Path
+import argparse
 import json
 import numpy as np
 import pandas as pd
@@ -95,29 +96,44 @@ def compute_bias_metrics(y_true, scores, identities, power, weights, min_subgrou
     }
 
 
+def tfidf_scores(texts, artifact_dir):
+    word_vectorizer = joblib.load(artifact_dir / "word_tfidf_vectorizer.joblib")
+    char_vectorizer = joblib.load(artifact_dir / "char_tfidf_vectorizer.joblib")
+    model = joblib.load(artifact_dir / "toxicity_logistic_regression.joblib")
+    x_vec = hstack(
+        [word_vectorizer.transform(texts), char_vectorizer.transform(texts)],
+        format="csr",
+        dtype=np.float32,
+    )
+    return model.predict_proba(x_vec)[:, list(model.classes_).index(1)]
+
+
 def main():
+    p = argparse.ArgumentParser()
+    p.add_argument("--scores", default=None,
+                   help="CSV with a `score` column, one row per identity_eval.parquet row "
+                        "in the same order (e.g. DistilBERT predictions). Default: score "
+                        "with the TF-IDF artifacts.")
+    p.add_argument("--out-dir", default=str(ROOT / "metrics"))
+    a = p.parse_args()
+
     params = yaml.safe_load((ROOT / "params.yaml").read_text(encoding="utf-8"))
     data_cfg = params["data"]
     bias_cfg = params["bias"]
-    artifact_dir = ROOT / "artifacts"
-    metrics_dir = ROOT / "metrics"
+    metrics_dir = Path(a.out_dir)
     metrics_dir.mkdir(parents=True, exist_ok=True)
 
     eval_df = pd.read_parquet(ROOT / "data" / "processed" / "identity_eval.parquet")
     texts = eval_df[data_cfg["text_column"]].fillna("").astype(str)
     y_true = eval_df[data_cfg["label_column"]].astype("int8").to_numpy()
 
-    word_vectorizer = joblib.load(artifact_dir / "word_tfidf_vectorizer.joblib")
-    char_vectorizer = joblib.load(artifact_dir / "char_tfidf_vectorizer.joblib")
-    model = joblib.load(artifact_dir / "toxicity_logistic_regression.joblib")
-
-    print(f"Scoring {len(eval_df):,} identity-labelled comments...")
-    x_vec = hstack(
-        [word_vectorizer.transform(texts), char_vectorizer.transform(texts)],
-        format="csr",
-        dtype=np.float32,
-    )
-    scores = model.predict_proba(x_vec)[:, list(model.classes_).index(1)]
+    if a.scores:
+        scores = pd.read_csv(a.scores)["score"].to_numpy(dtype=float)
+        if len(scores) != len(eval_df):
+            raise ValueError(f"{a.scores} has {len(scores)} scores, expected {len(eval_df)}")
+    else:
+        print(f"Scoring {len(eval_df):,} identity-labelled comments...")
+        scores = tfidf_scores(texts, ROOT / "artifacts")
 
     threshold = float(data_cfg["identity_threshold"])
     identities = {

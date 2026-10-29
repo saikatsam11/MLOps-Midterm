@@ -67,10 +67,10 @@ def main():
         stratify=df[label_col],
     )
 
-    # Keep only fields needed by the model; source target score is not needed
-    # after the binary label has been derived.
-    train_df = train_df[[text_col, label_col]].reset_index(drop=True)
-    valid_df = valid_df[[text_col, label_col]].reset_index(drop=True)
+    # Keep the continuous score next to the binary label: the TF-IDF model
+    # uses the label, DistilBERT trains on the score as a soft label.
+    train_df = train_df[[text_col, score_col, label_col]].reset_index(drop=True)
+    valid_df = valid_df[[text_col, score_col, label_col]].reset_index(drop=True)
     train_df.to_csv(output_dir / "train.csv", index=False)
     valid_df.to_csv(output_dir / "valid.csv", index=False)
 

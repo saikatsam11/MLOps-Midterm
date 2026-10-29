@@ -19,3 +19,4 @@ metrics/prod_bias.json
 mlflow.db
 mlartifacts/
 jenkins/datasets/
+distilbert_out/
