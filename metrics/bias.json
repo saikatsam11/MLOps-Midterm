@@ -1,0 +1,98 @@
+{
+  "overall_auc": 0.9047251825177021,
+  "final_score": 0.8624292706910017,
+  "power_means": {
+    "subgroup_auc": 0.8245104444962221,
+    "bpsn_auc": 0.8092249106248101,
+    "bnsp_auc": 0.911256545125273
+  },
+  "n_eval": 100000,
+  "subgroups": {
+    "asian": {
+      "n": 1144,
+      "subgroup_auc": 0.8635299774435558,
+      "bpsn_auc": 0.8839034354295875,
+      "bnsp_auc": 0.8877074755038662
+    },
+    "black": {
+      "n": 3656,
+      "subgroup_auc": 0.7832601184330709,
+      "bpsn_auc": 0.7482685335744728,
+      "bnsp_auc": 0.9269888406839432
+    },
+    "christian": {
+      "n": 9866,
+      "subgroup_auc": 0.8886884069501992,
+      "bpsn_auc": 0.9124616967669775,
+      "bnsp_auc": 0.8810544171788528
+    },
+    "female": {
+      "n": 13357,
+      "subgroup_auc": 0.8721909141818386,
+      "bpsn_auc": 0.8696891568261685,
+      "bnsp_auc": 0.9117197035021828
+    },
+    "homosexual_gay_or_lesbian": {
+      "n": 2769,
+      "subgroup_auc": 0.7816031032761069,
+      "bpsn_auc": 0.7587755661313169,
+      "bnsp_auc": 0.9253443748187067
+    },
+    "jewish": {
+      "n": 1906,
+      "subgroup_auc": 0.7850525015441631,
+      "bpsn_auc": 0.8319942704089934,
+      "bnsp_auc": 0.8785569672253748
+    },
+    "latino": {
+      "n": 518,
+      "subgroup_auc": 0.8430100154271862,
+      "bpsn_auc": 0.8183031951574592,
+      "bnsp_auc": 0.922348800091138
+    },
+    "male": {
+      "n": 11034,
+      "subgroup_auc": 0.8779349328777423,
+      "bpsn_auc": 0.8464600346363823,
+      "bnsp_auc": 0.9295821832547001
+    },
+    "muslim": {
+      "n": 5197,
+      "subgroup_auc": 0.7941550146995366,
+      "bpsn_auc": 0.7751056666455215,
+      "bnsp_auc": 0.9230326386033899
+    },
+    "psychiatric_or_mental_illness": {
+      "n": 1202,
+      "subgroup_auc": 0.8629273397787302,
+      "bpsn_auc": 0.8407377197856665,
+      "bnsp_auc": 0.9210786760317184
+    },
+    "transgender": {
+      "n": 630,
+      "subgroup_auc": 0.8098972113981495,
+      "bpsn_auc": 0.8194878313986798,
+      "bnsp_auc": 0.9015386305093841
+    },
+    "white": {
+      "n": 6159,
+      "subgroup_auc": 0.7996374662807307,
+      "bpsn_auc": 0.7337485244736852,
+      "bnsp_auc": 0.9419689850768759
+    }
+  },
+  "excluded_subgroups": {
+    "atheist": 347,
+    "bisexual": 76,
+    "buddhist": 158,
+    "heterosexual": 325,
+    "hindu": 133,
+    "intellectual_or_learning_disability": 21,
+    "other_disability": 1,
+    "other_gender": 1,
+    "other_race_or_ethnicity": 128,
+    "other_religion": 74,
+    "other_sexual_orientation": 4,
+    "physical_disability": 27
+  }
+}
