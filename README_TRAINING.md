@@ -316,7 +316,35 @@ it with the baseline by selecting both runs in the MLflow UI and clicking
 **Compare**. The DistilBERT run is not registered: the registry and the
 fairness gate in Jenkins manage the TF-IDF model that the pipeline retrains.
 
-## 9. Tests
+## 9. Hyperparameter search (MLflow experiment tracking)
+
+`src/tune.py` runs a small grid search over the logistic regression
+hyperparameters to demonstrate experiment tracking. It is a demonstration, not
+an exhaustive search: trials train on a 40,000-row subsample (`tuning.train_rows`)
+so the whole search takes a few minutes.
+
+```bash
+python src/tune.py        # after dvc repro, with the MLflow server running
+```
+
+| Grid (`tuning.grid` in `params.yaml`) | Values |
+|---|---|
+| `C` | 0.5, 1.0, 4.0 |
+| `class_weight` | balanced, none |
+
+Each of the 6 trials is a **nested child run** under one parent run
+(`tfidf-grid-search`) in the MLflow experiment **`toxicity-tuning`**, with its
+params, validation metrics (ROC-AUC, F1, precision, recall), and bias metrics on
+the identity hold-out (final score, power means, per-subgroup AUCs, and
+`min_bpsn_auc`). The results table is saved as `metrics/tuning/results.csv` and
+attached to the parent run.
+
+To compare trials in the UI: open `toxicity-tuning`, expand the parent run,
+select the child runs, click **Compare**, and use the **Parallel Coordinates**
+or **Scatter Plot** views (for example `C` against `valid_roc_auc` and
+`min_bpsn_auc`).
+
+## 10. Tests
 
 ```bash
 pytest -q tests

@@ -31,6 +31,27 @@ def calculate_metrics(y_true, probabilities, threshold):
     }
 
 
+def threshold_sweep(y_true, probabilities, eval_cfg):
+    """Precision/recall/F1 over the threshold grid in params.yaml; returns the
+    rows and the threshold with the best F1."""
+    thresholds = np.arange(
+        float(eval_cfg["threshold_min"]),
+        float(eval_cfg["threshold_max"]) + 1e-9,
+        float(eval_cfg["threshold_step"]),
+    )
+    rows = [
+        {
+            "threshold": float(t),
+            "precision": float(precision_score(y_true, probabilities >= t, zero_division=0)),
+            "recall": float(recall_score(y_true, probabilities >= t, zero_division=0)),
+            "f1": float(f1_score(y_true, probabilities >= t, zero_division=0)),
+        }
+        for t in thresholds
+    ]
+    best = max(rows, key=lambda row: row["f1"])
+    return rows, float(best["threshold"])
+
+
 def load_scores(path, expected_rows):
     """Read externally computed probabilities, aligned row-for-row with the
     evaluation file they were predicted on."""
@@ -78,22 +99,7 @@ def main():
     default_threshold = float(eval_cfg["default_threshold"])
     metrics_at_default = calculate_metrics(y_valid, probabilities, default_threshold)
 
-    thresholds = np.arange(
-        float(eval_cfg["threshold_min"]),
-        float(eval_cfg["threshold_max"]) + 1e-9,
-        float(eval_cfg["threshold_step"]),
-    )
-    threshold_rows = [
-        {
-            "threshold": float(t),
-            "precision": float(precision_score(y_valid, probabilities >= t, zero_division=0)),
-            "recall": float(recall_score(y_valid, probabilities >= t, zero_division=0)),
-            "f1": float(f1_score(y_valid, probabilities >= t, zero_division=0)),
-        }
-        for t in thresholds
-    ]
-    best_row = max(threshold_rows, key=lambda row: row["f1"])
-    best_threshold = float(best_row["threshold"])
+    threshold_rows, best_threshold = threshold_sweep(y_valid, probabilities, eval_cfg)
     metrics_at_best = calculate_metrics(y_valid, probabilities, best_threshold)
 
     output = {

@@ -86,3 +86,14 @@ gate:
   final_score_tolerance: 0.0
   subgroup_auc_tolerance: 0.01
   bpsn_auc_tolerance: 0.01
+
+tuning:
+  # Small demonstration grid for src/tune.py: shows experiment tracking with
+  # nested MLflow runs, not an exhaustive search. Trials train on a subsample
+  # so the whole search takes a few minutes. Trials are ranked by validation
+  # ROC-AUC; bias metrics are logged for comparison only.
+  experiment: toxicity-tuning
+  train_rows: 40000
+  grid:
+    C: [0.5, 1.0, 4.0]
+    class_weight: [balanced, null]
