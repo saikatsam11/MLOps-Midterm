@@ -1,4 +1,4 @@
-"""Fine-tune DistilBERT on the prepared Civil Comments split (run on a GPU, e.g. Colab).
+"""Fine-tune DistilBERT on the prepared Civil Comments split.
 
 Trains a single-logit head with soft-label BCE on the continuous `target` score,
 using the same train.csv / valid.csv / identity_eval.parquet that prepare.py
@@ -10,10 +10,6 @@ Outputs (in --out-dir):
     identity_eval_scores.csv   `score` per identity_eval.parquet row, same order
     train_config.json          hyperparameters, library versions, timings
     train_log.csv              training loss every --log-every steps
-
-Score the outputs with the same evaluation code as the baseline:
-    python src/evaluate.py  --scores <out>/valid_scores.csv         --out-dir metrics/distilbert
-    python src/bias_eval.py --scores <out>/identity_eval_scores.csv --out-dir metrics/distilbert
 """
 from pathlib import Path
 import argparse
