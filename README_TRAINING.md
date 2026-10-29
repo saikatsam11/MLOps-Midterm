@@ -139,6 +139,10 @@ UI: <http://127.0.0.1:5000>. Runs and the registry live in `mlflow.db`, model
 files in `mlartifacts/` (both git-ignored). Scripts use
 `$MLFLOW_TRACKING_URI`, defaulting to `http://127.0.0.1:5000`.
 
+If the Jenkins stack from section 7 is running, it already serves MLflow on
+port 5000: skip this step and the local scripts log to that server, so local
+runs and Jenkins builds share one registry.
+
 ### Log, gate and promote a model
 
 After `dvc repro`:
@@ -188,7 +192,19 @@ tracking server at `http://mlflow:5000`.
 
 ### Start
 
-Requires Docker Desktop (or Docker Engine) with Compose.
+Requires Docker Desktop (or Docker Engine) with Compose, and at least **11 GB of
+memory for Docker**: training on 400k rows (section 10) needs it. Docker Desktop
+on Windows runs in WSL2, which gets half of system RAM by default. To raise it,
+create `C:\Users\<you>\.wslconfig` containing:
+
+```ini
+[wsl2]
+memory=11GB
+```
+
+then run `wsl --shutdown` and restart Docker Desktop. Check with
+`docker info --format "{{.MemTotal}}"`. On macOS / Linux Docker Desktop, set it
+under *Settings > Resources > Memory*.
 
 ```bash
 docker compose -f jenkins/docker-compose.yml up -d --build
@@ -358,13 +374,25 @@ Identity mentions are found by whole-word matching against the term lists in
 
 ### Run it
 
-With the standard 200k model in `@production`, run **Build with Parameters** twice:
+On a fresh Jenkins + MLflow setup, run these three builds in order with
+**Build with Parameters**, each after the previous one has finished (leave
+`MAX_ROWS` empty on the first):
 
-1. `CANDIDATE=imbalanced`, `MAX_ROWS=400000`: blocked at Fairness Gate.
-2. `CANDIDATE=reweighted`, `MAX_ROWS=400000`: passes and is promoted to `@production`.
+| # | `CANDIDATE` | `MAX_ROWS` | Result |
+|---|---|---|---|
+| 1 | `standard` | *(empty)* | passes, becomes `@production` (the 200k production model) |
+| 2 | `imbalanced` | `400000` | **blocked** at Fairness Gate |
+| 3 | `reweighted` | `400000` | passes and is promoted to `@production` |
 
-To point `@production` back at an earlier version (a registry rollback):
-`MlflowClient().set_registered_model_alias("toxicity-classifier", "production", "<version>")`.
+The very first build of a new job may run with the defaults before Jenkins has
+read the parameters; that is a `standard` build and counts as build 1.
+
+To run the demo again, point `@production` back at the build 1 version first
+(a registry rollback), with the MLflow server running:
+
+```bash
+python -c "from mlflow import MlflowClient; MlflowClient('http://127.0.0.1:5000').set_registered_model_alias('toxicity-classifier', 'production', '<version>')"
+```
 
 ### Results
 
