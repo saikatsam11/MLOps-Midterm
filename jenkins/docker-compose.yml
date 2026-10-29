@@ -1,0 +1,38 @@
+# Jenkins + MLflow for the CD pipeline.
+#   docker compose -f jenkins/docker-compose.yml up -d --build
+# Jenkins UI: http://localhost:8080 (or $JENKINS_PORT)   MLflow UI: http://localhost:5000
+name: toxicity-mlops
+
+services:
+  jenkins:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: jenkins-toxicity
+    ports:
+      - "${JENKINS_PORT:-8080}:8080"   # web UI
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      # Optional: a folder holding an existing train.csv, used when the
+      # pipeline runs with DATA_SOURCE=mounted instead of pulling from DVC.
+      - ${DATASET_DIR:-./datasets}:/datasets:ro
+    depends_on:
+      - mlflow
+    restart: unless-stopped
+
+  mlflow:
+    build:
+      context: .
+      dockerfile: Dockerfile.mlflow
+    container_name: mlflow-toxicity
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow_data:/mlflow
+    restart: unless-stopped
+
+volumes:
+  jenkins_home:
+  mlflow_data:

@@ -182,7 +182,80 @@ model = mlflow.pyfunc.load_model("models:/toxicity-classifier@production")
 model.predict(pd.DataFrame({"comment_text": ["I am a gay man."]}))
 ```
 
-## 7. Tests
+## 7. Jenkins CD pipeline
+
+Jenkins and MLflow run together in Docker (`jenkins/`). Jenkins reaches the
+tracking server at `http://mlflow:5000`.
+
+### Start
+
+Requires Docker Desktop (or Docker Engine) with Compose.
+
+```bash
+docker compose -f jenkins/docker-compose.yml up -d --build
+```
+
+| Service | URL | Container |
+|---|---|---|
+| Jenkins | <http://localhost:8080> | `jenkins-toxicity` |
+| MLflow | <http://localhost:5000> | `mlflow-toxicity` |
+
+If port 8080 is taken, choose another: `JENKINS_PORT=8081 docker compose -f jenkins/docker-compose.yml up -d --build`.
+
+Stop with `docker compose -f jenkins/docker-compose.yml down` (add `-v` to
+also delete Jenkins and MLflow data).
+
+### First-time Jenkins setup
+
+1. Get the initial admin password:
+   `docker exec jenkins-toxicity cat /var/jenkins_home/secrets/initialAdminPassword`
+2. Open Jenkins, paste it, choose **Install suggested plugins**, create an admin user.
+3. **New Item** > name `toxicity-cd` > **Pipeline** > OK.
+4. Under **Pipeline**: Definition **Pipeline script from SCM**, SCM **Git**,
+   Repository URL `https://github.com/saikatsam11/MLOps-Midterm.git`,
+   Branch `*/main`, Script Path `Jenkinsfile`. Save.
+5. Data access for `DATA_SOURCE=dvc`: **Manage Jenkins > Credentials > Global >
+   Add Credentials**, kind **Secret file**, ID `gdrive-service-account`, upload
+   the Google service-account JSON key that has access to the DVC Drive folder.
+   Never commit this key.
+6. Optional, build on every push: in the job enable **GitHub hook trigger for
+   GITScm polling**, and add a GitHub webhook to
+   `https://<public-jenkins-host>/github-webhook/` (for a local Jenkins, expose
+   it with a tunnel such as ngrok).
+
+The first build registers the job's parameters; after that use **Build with Parameters**.
+
+### Parameters
+
+| Parameter | Default | Effect |
+|---|---|---|
+| `DATA_SOURCE` | `dvc` | `dvc`: `dvc pull` from the Drive remote using the credential above. `mounted`: use `train.csv` from the folder mounted at `/datasets` (set `DATASET_DIR=<folder>` when starting compose) |
+| `RUN_LABEL` | `baseline` | candidate label: MLflow run name and `candidate` tag |
+| `MAX_ROWS` | *(empty)* | override `data.max_rows` for a faster build. Keep it equal to the production model's setting, or the gate compares unlike models |
+| `DEPLOY` | `false` | after promotion, build `docker/Dockerfile.api` and `kubectl set image` the `toxicity-api` deployment |
+| `IMAGE` | `toxicity-api` | image name used when `DEPLOY` is on |
+
+### Stages
+
+| Stage | What it does | Fails the build when |
+|---|---|---|
+| Checkout | clone the repository | |
+| Setup | create a Python 3.12 venv with `uv`, install `requirements-train.txt` | |
+| Unit Tests | `pytest`, results shown in the Jenkins test report | any test fails |
+| Fetch Data | `dvc pull train.csv`, or link the mounted copy | data unavailable |
+| Reproduce Pipeline | `dvc repro`: prepare > train > evaluate > bias_eval | any stage fails |
+| Log to MLflow | log the run, register a new version, alias `@staging` | |
+| Fetch Production Baseline | download `@production`'s `bias.json` (none on the first build) | |
+| Fairness Gate | compare candidate vs production; on a block, tag the version `gate=blocked` | **any gated metric regresses** |
+| Promote | move `@production` to the candidate | |
+| Build API Image / Deploy to Kubernetes | only when `DEPLOY` is on (needs the serving Dockerfile, the K8s deployment, and the docker/kubectl CLIs in the Jenkins image) | |
+
+`post` always archives `metrics/*.json` (including `bias.json` and
+`gate_report.json`), `dvc.lock`, `params.yaml` and the test report, so a
+blocked build keeps the evidence of why it was blocked. The workspace is
+cleaned after every build.
+
+## 8. Tests
 
 ```bash
 pytest -q tests
