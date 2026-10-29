@@ -86,8 +86,8 @@ def main():
     p.add_argument("--metrics-dir", default="metrics",
                    help="Folder holding metrics.json and bias.json for this run")
     p.add_argument("--external-model", default=None,
-                   help="Folder of a model trained outside the DVC pipeline (e.g. the "
-                        "DistilBERT output from Colab). Its files and train_config.json are "
+                   help="Folder of a model trained outside the DVC pipeline (e.g. "
+                        "DistilBERT). Its files and train_config.json are "
                         "logged for comparison; it is not registered or gated.")
     p.add_argument("--model-family", default=None,
                    help="Tag value; default tfidf_logreg, or distilbert with --external-model")

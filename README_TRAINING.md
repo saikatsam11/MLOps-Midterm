@@ -18,15 +18,14 @@ pip install -r requirements-train.txt
 
 ## 2. Data
 
-The dataset is versioned with DVC (`train.csv.dvc`, 816,211,476 bytes,
-MD5 `7a687c299462dd009e90db97ac053eef`). Fetch it into the repository root:
+The dataset is versioned with DVC (`train.csv.dvc`). Fetch it into the
+repository root:
 
 ```bash
 dvc pull
 ```
 
-> Content warning: the dataset contains abusive and offensive text. It is never
-> committed to git; `*.csv` and `data/` are git-ignored.
+> Content warning: the dataset contains abusive and offensive text.
 
 ## 3. Run the pipeline
 
@@ -291,7 +290,7 @@ two models are compared on identical data.
 2. In Google Drive create `MyDrive/toxicity-mlops/data/` and upload
    `data/processed/train.csv`, `valid.csv` and `identity_eval.parquet`.
 3. Open `notebooks/train_distilbert_colab.ipynb` in Colab
-   (*File > Upload notebook*), select a **T4 GPU** runtime, and run all cells.
+   (*File > Upload notebook*), select a GPU runtime, and run all cells.
    Outputs go to `MyDrive/toxicity-mlops/distilbert_out/`.
 
 The script also runs on any machine with a CUDA GPU:
@@ -320,12 +319,10 @@ fairness gate in Jenkins manage the TF-IDF model that the pipeline retrains.
 ## 9. Hyperparameter search (MLflow experiment tracking)
 
 `src/tune.py` runs a small grid search over the logistic regression
-hyperparameters to demonstrate experiment tracking. It is a demonstration, not
-an exhaustive search: trials train on a 40,000-row subsample (`tuning.train_rows`)
-so the whole search takes a few minutes.
+hyperparameters. Trials train on a 40,000-row subsample (`tuning.train_rows`).
 
 ```bash
-python src/tune.py        # after dvc repro, with the MLflow server running
+python src/tune.py
 ```
 
 | Grid (`tuning.grid` in `params.yaml`) | Values |
@@ -361,10 +358,13 @@ Identity mentions are found by whole-word matching against the term lists in
 
 ### Run it
 
-With production at the standard 200k model, run **Build with Parameters** twice:
+With the standard 200k model in `@production`, run **Build with Parameters** twice:
 
-1. `CANDIDATE=imbalanced`, `MAX_ROWS=400000`: expected **red** at Fairness Gate.
-2. `CANDIDATE=reweighted`, `MAX_ROWS=400000`: expected **green**, promoted to `@production`.
+1. `CANDIDATE=imbalanced`, `MAX_ROWS=400000`: blocked at Fairness Gate.
+2. `CANDIDATE=reweighted`, `MAX_ROWS=400000`: passes and is promoted to `@production`.
+
+To point `@production` back at an earlier version (a registry rollback):
+`MlflowClient().set_registered_model_alias("toxicity-classifier", "production", "<version>")`.
 
 ### Results
 
@@ -372,21 +372,15 @@ All three models are scored on the same 100k identity hold-out:
 
 | Model | Overall AUC | Final score | muslim BPSN | Lowest BPSN | Gate |
 |---|---|---|---|---|---|
-| Production (standard, 200k) | 0.9047 | 0.8624 | 0.775 | 0.734 (white) | n/a |
-| A: imbalanced, 400k | **0.9102 (+0.0055)** | **0.8671 (+0.0047)** | **0.727 (-0.049)** | 0.727 | **BLOCKED**: `muslim.bpsn_auc`, `transgender.subgroup_auc` |
-| B: reweighted, 400k | 0.9066 (+0.0019) | 0.8692 (+0.0068) | 0.812 (+0.037) | 0.776 | **PASSED**, every subgroup's BPSN improves |
+| Production, v2 (standard, 200k) | 0.9047 | 0.8624 | 0.775 | 0.734 (white) | n/a |
+| A: imbalanced, 400k, v4 | **0.9101 (+0.0054)** | **0.8670 (+0.0046)** | **0.724 (-0.051)** | 0.724 (muslim) | **BLOCKED**: `muslim.bpsn_auc` -0.051, `transgender.subgroup_auc` -0.011 |
+| B: reweighted, 400k, v5 | 0.9066 (+0.0019) | 0.8692 (+0.0068) | 0.812 (+0.037) | 0.776 (black) | **PASSED**, BPSN improves for all 12 subgroups; promoted to `@production` |
 
-Candidate A is better on overall AUC and on the aggregate bias-aware score,
-yet the gate blocks it because one subgroup regresses: a single overall number
-would have promoted it. The blocked version is tagged `gate=blocked` in the
-MLflow registry with the failed checks, and the build archives
-`gate_report.json`. Candidate A also trips `transgender.subgroup_auc`; with 630
-evaluation rows that subgroup is close to the 500-row cutoff and its AUC is
-noisy.
-
-Reweighting is not free: on the 200k production data it raised every BPSN but
-cost 0.004 to 0.013 overall AUC, more than the gate's 0.002 tolerance, so the
-gate blocked it too. With more training data it improves both.
+Candidate A is better on overall AUC and on the final score, yet the gate
+blocks it because one subgroup regresses. The blocked version is tagged
+`gate=blocked` in the registry with the failed checks. Its second failed check,
+`transgender.subgroup_auc`, is on a 630-row subgroup close to the 500-row
+cutoff, where AUCs are noisy.
 
 ## 11. Tests
 

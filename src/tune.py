@@ -1,11 +1,9 @@
-"""Small hyperparameter search for the TF-IDF + logistic regression model,
-tracked in MLflow.
+"""Grid search for the TF-IDF + logistic regression model, tracked in MLflow.
 
-Demonstrates experiment tracking: each combination in `tuning.grid`
-(params.yaml) is logged as a nested child run under one parent run, with its
-validation metrics and its bias metrics on the identity hold-out, so trials can
-be compared side by side in the MLflow UI. Trials train on a `tuning.train_rows`
-subsample of the prepared train split to keep the search to a few minutes.
+Each combination in `tuning.grid` (params.yaml) is logged as a nested child run
+under one parent run, with its validation metrics and its bias metrics on the
+identity hold-out. Trials train on a `tuning.train_rows` subsample of the
+prepared train split.
 
 Writes metrics/tuning/results.csv. Run after `dvc repro` (needs
 data/processed/). Tracking server: $MLFLOW_TRACKING_URI
