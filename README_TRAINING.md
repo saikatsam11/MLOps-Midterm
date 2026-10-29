@@ -241,8 +241,9 @@ The first build registers the job's parameters; after that use **Build with Para
 | Parameter | Default | Effect |
 |---|---|---|
 | `DATA_SOURCE` | `dvc` | `dvc`: `dvc pull` from the Drive remote using the credential above. `mounted`: use `train.csv` from the folder mounted at `/datasets` (set `DATASET_DIR=<folder>` when starting compose) |
-| `RUN_LABEL` | `baseline` | candidate label: MLflow run name and `candidate` tag |
-| `MAX_ROWS` | *(empty)* | override `data.max_rows` for a faster build. Keep it equal to the production model's setting, or the gate compares unlike models |
+| `CANDIDATE` | `standard` | training strategy, `candidate.strategy` in `params.yaml`: `standard`, `imbalanced` or `reweighted` (see section 10) |
+| `RUN_LABEL` | *(empty)* | MLflow run name and `candidate` tag; empty uses the `CANDIDATE` value |
+| `MAX_ROWS` | *(empty)* | override `data.max_rows`. Any size is a fair comparison: every candidate is scored on the same fixed identity hold-out |
 | `DEPLOY` | `false` | after promotion, build `docker/Dockerfile.api` and `kubectl set image` the `toxicity-api` deployment |
 | `IMAGE` | `toxicity-api` | image name used when `DEPLOY` is on |
 
@@ -344,7 +345,50 @@ select the child runs, click **Compare**, and use the **Parallel Coordinates**
 or **Scatter Plot** views (for example `C` against `valid_roc_auc` and
 `min_bpsn_auc`).
 
-## 10. Tests
+## 10. Fairness gate demo: a more accurate model that is blocked
+
+Two candidates are retrained on more data (`MAX_ROWS=400000`, double the
+production model's 200,000) and gated against production. They differ only in
+how the training rows are used (`candidate` in `params.yaml`):
+
+| Candidate | `CANDIDATE` | What changes in training |
+|---|---|---|
+| A | `imbalanced` | half of the **non-toxic** comments mentioning Muslims are dropped, so the model sees that identity mostly in toxic contexts |
+| B | `reweighted` | **non-toxic** comments mentioning any identity get sample weight 2, targeting the false positives BPSN measures |
+
+Identity mentions are found by whole-word matching against the term lists in
+`params.yaml`.
+
+### Run it
+
+With production at the standard 200k model, run **Build with Parameters** twice:
+
+1. `CANDIDATE=imbalanced`, `MAX_ROWS=400000`: expected **red** at Fairness Gate.
+2. `CANDIDATE=reweighted`, `MAX_ROWS=400000`: expected **green**, promoted to `@production`.
+
+### Results
+
+All three models are scored on the same 100k identity hold-out:
+
+| Model | Overall AUC | Final score | muslim BPSN | Lowest BPSN | Gate |
+|---|---|---|---|---|---|
+| Production (standard, 200k) | 0.9047 | 0.8624 | 0.775 | 0.734 (white) | n/a |
+| A: imbalanced, 400k | **0.9102 (+0.0055)** | **0.8671 (+0.0047)** | **0.727 (-0.049)** | 0.727 | **BLOCKED**: `muslim.bpsn_auc`, `transgender.subgroup_auc` |
+| B: reweighted, 400k | 0.9066 (+0.0019) | 0.8692 (+0.0068) | 0.812 (+0.037) | 0.776 | **PASSED**, every subgroup's BPSN improves |
+
+Candidate A is better on overall AUC and on the aggregate bias-aware score,
+yet the gate blocks it because one subgroup regresses: a single overall number
+would have promoted it. The blocked version is tagged `gate=blocked` in the
+MLflow registry with the failed checks, and the build archives
+`gate_report.json`. Candidate A also trips `transgender.subgroup_auc`; with 630
+evaluation rows that subgroup is close to the 500-row cutoff and its AUC is
+noisy.
+
+Reweighting is not free: on the 200k production data it raised every BPSN but
+cost 0.004 to 0.013 overall AUC, more than the gate's 0.002 tolerance, so the
+gate blocked it too. With more training data it improves both.
+
+## 11. Tests
 
 ```bash
 pytest -q tests
@@ -358,3 +402,5 @@ pytest -q tests
 - `tests/test_mlflow_registry.py` checks the logged params/metrics and the
   fetch-baseline / promote / reject registry flow against a temporary SQLite
   store (no server needed).
+- `tests/test_candidates.py` checks identity-term matching and the
+  standard / imbalanced / reweighted training strategies.
