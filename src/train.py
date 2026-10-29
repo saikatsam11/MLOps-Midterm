@@ -11,6 +11,41 @@ from sklearn.linear_model import LogisticRegression
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def build_word_vectorizer(word_cfg):
+    return TfidfVectorizer(
+        lowercase=word_cfg["lowercase"],
+        strip_accents=word_cfg["strip_accents"],
+        analyzer="word",
+        ngram_range=(int(word_cfg["ngram_min"]), int(word_cfg["ngram_max"])),
+        min_df=int(word_cfg["min_df"]),
+        max_features=int(word_cfg["max_features"]),
+        sublinear_tf=bool(word_cfg["sublinear_tf"]),
+        dtype=np.float32,
+    )
+
+
+def build_char_vectorizer(char_cfg):
+    return TfidfVectorizer(
+        lowercase=char_cfg["lowercase"],
+        analyzer="char",
+        ngram_range=(int(char_cfg["ngram_min"]), int(char_cfg["ngram_max"])),
+        min_df=int(char_cfg["min_df"]),
+        max_features=int(char_cfg["max_features"]),
+        sublinear_tf=bool(char_cfg["sublinear_tf"]),
+        dtype=np.float32,
+    )
+
+
+def build_model(model_cfg, seed):
+    return LogisticRegression(
+        C=float(model_cfg["C"]),
+        class_weight=model_cfg["class_weight"],
+        solver=model_cfg["solver"],
+        max_iter=int(model_cfg["max_iter"]),
+        random_state=seed,
+    )
+
+
 def main():
     params = yaml.safe_load((ROOT / "params.yaml").read_text(encoding="utf-8"))
     data_cfg = params["data"]
@@ -25,27 +60,8 @@ def main():
     x_train = train_df[text_col].fillna("").astype(str)
     y_train = train_df[label_col].astype("int8")
 
-    word_cfg = feat_cfg["word"]
-    word_vectorizer = TfidfVectorizer(
-        lowercase=word_cfg["lowercase"],
-        strip_accents=word_cfg["strip_accents"],
-        analyzer="word",
-        ngram_range=(int(word_cfg["ngram_min"]), int(word_cfg["ngram_max"])),
-        min_df=int(word_cfg["min_df"]),
-        max_features=int(word_cfg["max_features"]),
-        sublinear_tf=bool(word_cfg["sublinear_tf"]),
-        dtype=np.float32,
-    )
-    char_cfg = feat_cfg["char"]
-    char_vectorizer = TfidfVectorizer(
-        lowercase=char_cfg["lowercase"],
-        analyzer="char",
-        ngram_range=(int(char_cfg["ngram_min"]), int(char_cfg["ngram_max"])),
-        min_df=int(char_cfg["min_df"]),
-        max_features=int(char_cfg["max_features"]),
-        sublinear_tf=bool(char_cfg["sublinear_tf"]),
-        dtype=np.float32,
-    )
+    word_vectorizer = build_word_vectorizer(feat_cfg["word"])
+    char_vectorizer = build_char_vectorizer(feat_cfg["char"])
 
     print("Fitting word TF-IDF...")
     x_word = word_vectorizer.fit_transform(x_train)
@@ -54,13 +70,7 @@ def main():
     x_train_vec = hstack([x_word, x_char], format="csr", dtype=np.float32)
     print("Training feature matrix:", x_train_vec.shape)
 
-    model = LogisticRegression(
-        C=float(model_cfg["C"]),
-        class_weight=model_cfg["class_weight"],
-        solver=model_cfg["solver"],
-        max_iter=int(model_cfg["max_iter"]),
-        random_state=int(data_cfg["random_state"]),
-    )
+    model = build_model(model_cfg, int(data_cfg["random_state"]))
     model.fit(x_train_vec, y_train)
 
     joblib.dump(word_vectorizer, artifact_dir / "word_tfidf_vectorizer.joblib")
