@@ -214,10 +214,21 @@ also delete Jenkins and MLflow data).
 4. Under **Pipeline**: Definition **Pipeline script from SCM**, SCM **Git**,
    Repository URL `https://github.com/saikatsam11/MLOps-Midterm.git`,
    Branch `*/main`, Script Path `Jenkinsfile`. Save.
-5. Data access for `DATA_SOURCE=dvc`: **Manage Jenkins > Credentials > Global >
-   Add Credentials**, kind **Secret file**, ID `gdrive-service-account`, upload
-   the Google service-account JSON key that has access to the DVC Drive folder.
-   Never commit this key.
+5. Data access for `DATA_SOURCE=dvc`. Jenkins cannot open a browser to sign
+   in to Google, so it reuses the login that DVC saves on your machine:
+   1. Run `dvc pull` once locally with a Google account that has access to the
+      DVC Drive folder. DVC saves the login (with a refresh token) to
+      `%LOCALAPPDATA%\pydrive2fs\Cache\<client-id>\default.json` on Windows,
+      `~/.cache/pydrive2fs/<client-id>/default.json` on Linux, or
+      `~/Library/Caches/pydrive2fs/<client-id>/default.json` on macOS.
+   2. **Manage Jenkins > Credentials > System > Global credentials > Add
+      Credentials**: kind **Secret file**, ID `gdrive-user-credentials`, upload
+      that `default.json`.
+
+   The pipeline passes it to DVC as `GDRIVE_CREDENTIALS_DATA` with command
+   tracing switched off, so the token never appears in the build log. The file
+   grants access to that Google account's Drive: keep it in Jenkins only and
+   never commit it.
 6. Optional, build on every push: in the job enable **GitHub hook trigger for
    GITScm polling**, and add a GitHub webhook to
    `https://<public-jenkins-host>/github-webhook/` (for a local Jenkins, expose
