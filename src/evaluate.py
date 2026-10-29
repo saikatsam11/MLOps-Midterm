@@ -1,4 +1,5 @@
 from pathlib import Path
+import argparse
 import json
 import numpy as np
 import pandas as pd
@@ -30,13 +31,30 @@ def calculate_metrics(y_true, probabilities, threshold):
     }
 
 
+def load_scores(path, expected_rows):
+    """Read externally computed probabilities, aligned row-for-row with the
+    evaluation file they were predicted on."""
+    scores = pd.read_csv(path)["score"].to_numpy(dtype=float)
+    if len(scores) != expected_rows:
+        raise ValueError(f"{path} has {len(scores)} scores, expected {expected_rows}")
+    return scores
+
+
 def main():
+    p = argparse.ArgumentParser()
+    p.add_argument("--scores", default=None,
+                   help="CSV with a `score` column, one row per valid.csv row in the same "
+                        "order (e.g. DistilBERT predictions). Default: score with the "
+                        "TF-IDF artifacts.")
+    p.add_argument("--out-dir", default=str(ROOT / "metrics"))
+    a = p.parse_args()
+
     params = yaml.safe_load((ROOT / "params.yaml").read_text(encoding="utf-8"))
     data_cfg = params["data"]
     eval_cfg = params["evaluation"]
     processed = ROOT / "data" / "processed"
     artifact_dir = ROOT / "artifacts"
-    metrics_dir = ROOT / "metrics"
+    metrics_dir = Path(a.out_dir)
     metrics_dir.mkdir(parents=True, exist_ok=True)
 
     valid_df = pd.read_csv(processed / "valid.csv")
@@ -44,15 +62,18 @@ def main():
     x_valid = valid_df[text_col].fillna("").astype(str)
     y_valid = valid_df[label_col].astype("int8").to_numpy()
 
-    word_vectorizer = joblib.load(artifact_dir / "word_tfidf_vectorizer.joblib")
-    char_vectorizer = joblib.load(artifact_dir / "char_tfidf_vectorizer.joblib")
-    model = joblib.load(artifact_dir / "toxicity_logistic_regression.joblib")
+    if a.scores:
+        probabilities = load_scores(a.scores, len(valid_df))
+    else:
+        word_vectorizer = joblib.load(artifact_dir / "word_tfidf_vectorizer.joblib")
+        char_vectorizer = joblib.load(artifact_dir / "char_tfidf_vectorizer.joblib")
+        model = joblib.load(artifact_dir / "toxicity_logistic_regression.joblib")
 
-    print("Transforming validation comments...")
-    x_word = word_vectorizer.transform(x_valid)
-    x_char = char_vectorizer.transform(x_valid)
-    x_valid_vec = hstack([x_word, x_char], format="csr", dtype=np.float32)
-    probabilities = model.predict_proba(x_valid_vec)[:, list(model.classes_).index(1)]
+        print("Transforming validation comments...")
+        x_word = word_vectorizer.transform(x_valid)
+        x_char = char_vectorizer.transform(x_valid)
+        x_valid_vec = hstack([x_word, x_char], format="csr", dtype=np.float32)
+        probabilities = model.predict_proba(x_valid_vec)[:, list(model.classes_).index(1)]
 
     default_threshold = float(eval_cfg["default_threshold"])
     metrics_at_default = calculate_metrics(y_valid, probabilities, default_threshold)
@@ -85,6 +106,11 @@ def main():
     (metrics_dir / "metrics.json").write_text(
         json.dumps(output, indent=2), encoding="utf-8"
     )
+
+    if a.scores:
+        print(json.dumps({k: v for k, v in output.items() if k != "threshold_search"}, indent=2))
+        print(f"Best validation F1 threshold: {best_threshold:.2f}")
+        return
 
     # Evaluation owns model_metadata.json so DVC stages have non-overlapping outputs.
     word_cfg = params["features"]["word"]

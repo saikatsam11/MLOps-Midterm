@@ -255,7 +255,57 @@ The first build registers the job's parameters; after that use **Build with Para
 blocked build keeps the evidence of why it was blocked. The workspace is
 cleaned after every build.
 
-## 8. Tests
+## 8. DistilBERT (GPU, Google Colab)
+
+`src/train_distilbert.py` fine-tunes `distilbert-base-uncased` with a single
+logit trained by **soft-label BCE** on the continuous `target` score (the
+fraction of annotators who rated the comment toxic). It uses the same
+`train.csv` / `valid.csv` / `identity_eval.parquet` as the baseline, so the
+two models are compared on identical data.
+
+| Setting | Value |
+|---|---|
+| Model | `distilbert-base-uncased`, 1 output logit |
+| Loss | `BCEWithLogitsLoss` against `target` (soft labels) |
+| Data | 160,000 train rows from `prepare.py` (same as the baseline) |
+| Epochs / batch / max length | 2 / 32 / 192 tokens |
+| Optimizer | AdamW, lr 2e-5, weight decay 0.01, linear schedule with 6% warmup |
+| Precision | fp16 mixed precision on GPU |
+| Seed | 42 |
+
+### Run on Colab
+
+1. Run `dvc repro` locally so `data/processed/` exists.
+2. In Google Drive create `MyDrive/toxicity-mlops/data/` and upload
+   `data/processed/train.csv`, `valid.csv` and `identity_eval.parquet`.
+3. Open `notebooks/train_distilbert_colab.ipynb` in Colab
+   (*File > Upload notebook*), select a **T4 GPU** runtime, and run all cells.
+   Outputs go to `MyDrive/toxicity-mlops/distilbert_out/`.
+
+The script also runs on any machine with a CUDA GPU:
+`pip install torch transformers==5.21.0`, then
+`python src/train_distilbert.py --data-dir data/processed --out-dir distilbert_out`.
+
+### Evaluate and log
+
+Download `distilbert_out/` from Drive into the repository root, then score it
+with the **same** evaluation code as the baseline:
+
+```bash
+python src/evaluate.py  --scores distilbert_out/valid_scores.csv         --out-dir metrics/distilbert
+python src/bias_eval.py --scores distilbert_out/identity_eval_scores.csv --out-dir metrics/distilbert
+python src/log_mlflow.py --run-name distilbert --metrics-dir metrics/distilbert --external-model distilbert_out
+```
+
+`--scores` takes a CSV with one `score` per row of the evaluation file, in the
+same order; a file with the wrong number of rows is rejected. The MLflow run
+gets tag `model_family=distilbert`, its training config as `distilbert.*`
+params, and the model files under the `external_model/` artifact folder. Compare
+it with the baseline by selecting both runs in the MLflow UI and clicking
+**Compare**. The DistilBERT run is not registered: the registry and the
+fairness gate in Jenkins manage the TF-IDF model that the pipeline retrains.
+
+## 9. Tests
 
 ```bash
 pytest -q tests

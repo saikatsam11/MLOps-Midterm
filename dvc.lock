@@ -5,8 +5,8 @@ stages:
     deps:
     - path: src/prepare.py
       hash: md5
-      md5: e5c0ca4c5e82cfcde4d640f7ee67e411
-      size: 3410
+      md5: 7f9aa7a22559fc25f5e50de3b16a9700
+      size: 3363
     - path: train.csv
       hash: md5
       md5: 7a687c299462dd009e90db97ac053eef
@@ -56,19 +56,19 @@ stages:
       size: 24148687
     - path: data/processed/train.csv
       hash: md5
-      md5: 9b75580b70516dfa86339c1341ac67f2
-      size: 47885493
+      md5: c5de1ddef5f660656cf1e22a86942ae7
+      size: 48809692
     - path: data/processed/valid.csv
       hash: md5
-      md5: fe1e4bc473f62ab41c1a37cb4c1602e9
-      size: 12025535
+      md5: e2b6e0f41d266526d75d71fe5b6e0245
+      size: 12259225
   train:
     cmd: python src/train.py
     deps:
     - path: data/processed/train.csv
       hash: md5
-      md5: 9b75580b70516dfa86339c1341ac67f2
-      size: 47885493
+      md5: c5de1ddef5f660656cf1e22a86942ae7
+      size: 48809692
     - path: src/train.py
       hash: md5
       md5: c28d9737fcd86b344a4dd5c768652ee1
@@ -110,7 +110,7 @@ stages:
       size: 2400891
     - path: artifacts/word_tfidf_vectorizer.joblib
       hash: md5
-      md5: 4f6d5efecbcd1444fa1ce2b4c808242a
+      md5: 43345255c29c7f0afda8cfac8013d89a
       size: 7238825
   evaluate:
     cmd: python src/evaluate.py
@@ -125,16 +125,16 @@ stages:
       size: 2400891
     - path: artifacts/word_tfidf_vectorizer.joblib
       hash: md5
-      md5: 4f6d5efecbcd1444fa1ce2b4c808242a
+      md5: 43345255c29c7f0afda8cfac8013d89a
       size: 7238825
     - path: data/processed/valid.csv
       hash: md5
-      md5: fe1e4bc473f62ab41c1a37cb4c1602e9
-      size: 12025535
+      md5: e2b6e0f41d266526d75d71fe5b6e0245
+      size: 12259225
     - path: src/evaluate.py
       hash: md5
-      md5: 2a1633b5802624fb703444bb11f2b11e
-      size: 5824
+      md5: 3813290f78cbc501d53695817ead487e
+      size: 6943
     params:
       params.yaml:
         data.label_column: toxic
@@ -166,7 +166,7 @@ stages:
       size: 2400891
     - path: artifacts/word_tfidf_vectorizer.joblib
       hash: md5
-      md5: 4f6d5efecbcd1444fa1ce2b4c808242a
+      md5: 43345255c29c7f0afda8cfac8013d89a
       size: 7238825
     - path: data/processed/identity_eval.parquet
       hash: md5
@@ -174,8 +174,8 @@ stages:
       size: 24148687
     - path: src/bias_eval.py
       hash: md5
-      md5: 9e39758fca25f2745510d8e0755b97f6
-      size: 5400
+      md5: 6f3435348b547201d7cd99ca8ab3369a
+      size: 6110
     params:
       params.yaml:
         bias:
