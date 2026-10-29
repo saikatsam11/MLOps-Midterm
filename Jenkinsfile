@@ -57,14 +57,16 @@ pipeline {
       steps {
         script {
           if (params.DATA_SOURCE == 'dvc') {
-            // Service-account JSON stored in Jenkins as a "Secret file"
-            // credential with id gdrive-service-account.
-            withCredentials([file(credentialsId: 'gdrive-service-account', variable: 'GDRIVE_SA')]) {
+            // Google Drive login saved by a local `dvc pull`, stored in Jenkins
+            // as a "Secret file" credential with id gdrive-user-credentials.
+            // The cache dir persists across builds, so only new data downloads.
+            withCredentials([file(credentialsId: 'gdrive-user-credentials', variable: 'GDRIVE_CREDS')]) {
               sh '''
                 . "$VENV/bin/activate"
                 dvc cache dir --local /var/jenkins_home/dvc-cache
-                dvc remote modify --local gdrive gdrive_use_service_account true
-                dvc remote modify --local gdrive gdrive_service_account_json_file_path "$GDRIVE_SA"
+                set +x  # keep the token out of the build log
+                export GDRIVE_CREDENTIALS_DATA="$(cat "$GDRIVE_CREDS")"
+                set -x
                 dvc pull train.csv
               '''
             }
