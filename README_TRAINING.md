@@ -361,20 +361,24 @@ Identity mentions are found by whole-word matching against the term lists in
 
 ### Run it
 
-With production at the standard 200k model, run **Build with Parameters** twice:
+With production at the standard 200k model, run **Build with Parameters** twice.
+If a different model is in production, point the alias back first (a registry
+rollback), e.g. in Python:
+`MlflowClient().set_registered_model_alias("toxicity-classifier", "production", "<version>")`.
 
 1. `CANDIDATE=imbalanced`, `MAX_ROWS=400000`: expected **red** at Fairness Gate.
 2. `CANDIDATE=reweighted`, `MAX_ROWS=400000`: expected **green**, promoted to `@production`.
 
 ### Results
 
-All three models are scored on the same 100k identity hold-out:
+From the Jenkins builds. All three models are scored on the same 100k identity
+hold-out:
 
 | Model | Overall AUC | Final score | muslim BPSN | Lowest BPSN | Gate |
 |---|---|---|---|---|---|
-| Production (standard, 200k) | 0.9047 | 0.8624 | 0.775 | 0.734 (white) | n/a |
-| A: imbalanced, 400k | **0.9102 (+0.0055)** | **0.8671 (+0.0047)** | **0.727 (-0.049)** | 0.727 | **BLOCKED**: `muslim.bpsn_auc`, `transgender.subgroup_auc` |
-| B: reweighted, 400k | 0.9066 (+0.0019) | 0.8692 (+0.0068) | 0.812 (+0.037) | 0.776 | **PASSED**, every subgroup's BPSN improves |
+| Production, v2 (standard, 200k) | 0.9047 | 0.8624 | 0.775 | 0.734 (white) | n/a |
+| A: imbalanced, 400k, v4 | **0.9101 (+0.0054)** | **0.8670 (+0.0046)** | **0.724 (-0.051)** | 0.724 (muslim) | **BLOCKED**: `muslim.bpsn_auc` -0.051, `transgender.subgroup_auc` -0.011 |
+| B: reweighted, 400k, v5 | 0.9066 (+0.0019) | 0.8692 (+0.0068) | 0.812 (+0.037) | 0.776 (black) | **PASSED**, BPSN improves for all 12 subgroups; promoted to `@production` |
 
 Candidate A is better on overall AUC and on the aggregate bias-aware score,
 yet the gate blocks it because one subgroup regresses: a single overall number
