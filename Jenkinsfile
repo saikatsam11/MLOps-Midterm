@@ -4,10 +4,12 @@ pipeline {
   parameters {
     choice(name: 'DATA_SOURCE', choices: ['dvc', 'mounted'],
            description: 'dvc = dvc pull from the Google Drive remote; mounted = use /datasets/train.csv mounted into the container')
-    string(name: 'RUN_LABEL', defaultValue: 'baseline',
-           description: 'Candidate label recorded in MLflow (run name and candidate tag)')
+    choice(name: 'CANDIDATE', choices: ['standard', 'imbalanced', 'reweighted'],
+           description: 'Training strategy (candidate.strategy in params.yaml): standard = production recipe; imbalanced = Candidate A, drops non-toxic comments mentioning one identity; reweighted = Candidate B, up-weights non-toxic identity mentions')
+    string(name: 'RUN_LABEL', defaultValue: '',
+           description: 'Label recorded in MLflow (run name and candidate tag); empty = the CANDIDATE value')
     string(name: 'MAX_ROWS', defaultValue: '',
-           description: 'Override data.max_rows for this build (empty = value in params.yaml). Keep equal to production for a fair gate.')
+           description: 'Override data.max_rows for this build (empty = value in params.yaml). The gate stays fair at any size: every candidate is scored on the same identity hold-out.')
     booleanParam(name: 'DEPLOY', defaultValue: false,
                  description: 'Build the API image and roll it out to Kubernetes after promotion')
     string(name: 'IMAGE', defaultValue: 'toxicity-api',
@@ -88,6 +90,8 @@ pipeline {
             python -c "import yaml,sys; p=yaml.safe_load(open('params.yaml')); p['data']['max_rows']=int(sys.argv[1]); yaml.safe_dump(p, open('params.yaml','w'), sort_keys=False)" "$MAX_ROWS"
             echo "data.max_rows overridden to $MAX_ROWS"
           fi
+          python -c "import yaml,sys; p=yaml.safe_load(open('params.yaml')); p['candidate']['strategy']=sys.argv[1]; yaml.safe_dump(p, open('params.yaml','w'), sort_keys=False)" "${CANDIDATE:-standard}"
+          echo "candidate.strategy set to ${CANDIDATE:-standard}"
           dvc repro
         '''
       }
@@ -97,7 +101,7 @@ pipeline {
       steps {
         sh '''
           . "$VENV/bin/activate"
-          python src/log_mlflow.py --run-name "$RUN_LABEL"
+          python src/log_mlflow.py --run-name "${RUN_LABEL:-${CANDIDATE:-standard}}"
         '''
       }
     }

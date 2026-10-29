@@ -60,6 +60,29 @@ model:
   solver: liblinear
   max_iter: 1000
 
+# How the training rows are used. Jenkins sets `strategy` per build
+# (CANDIDATE parameter) to train the fairness-gate demo candidates:
+#   standard    use every row as is (the production model)
+#   imbalanced  drop a fraction of the non-toxic comments that mention one
+#               identity, so it is seen mostly in toxic contexts (Candidate A)
+#   reweighted  up-weight non-toxic comments that mention any identity, the
+#               false-positive cases BPSN measures (Candidate B)
+# Identity mentions are found by whole-word matching against the term lists.
+candidate:
+  strategy: standard
+  imbalanced:
+    drop_fraction: 0.5
+    terms: [muslim, muslims, islam, islamic, islamist, islamists, mosque, mosques, quran, koran]
+  reweighted:
+    weight: 2.0
+    terms: [muslim, muslims, islam, islamic, islamist, islamists, mosque, mosques, quran, koran,
+            white, whites, caucasian, caucasians, black, blacks,
+            gay, gays, lesbian, lesbians, homosexual, homosexuals, lgbt, lgbtq, queer,
+            transgender, trans, jew, jews, jewish, christian, christians, catholic, catholics,
+            latino, latinos, hispanic, hispanics, mexican, mexicans, asian, asians,
+            women, woman, female, females, men, man, male, males,
+            mentally ill, mental illness, psychiatric]
+
 evaluation:
   default_threshold: 0.5
   threshold_min: 0.10

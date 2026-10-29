@@ -71,10 +71,81 @@ stages:
       size: 48809692
     - path: src/train.py
       hash: md5
-      md5: 7221cf6a5ce265d5003a1cd61122b689
-      size: 2892
+      md5: 00dfcb87c539df1b4baad542bed6411d
+      size: 4344
     params:
       params.yaml:
+        candidate:
+          strategy: standard
+          imbalanced:
+            drop_fraction: 0.5
+            terms:
+            - muslim
+            - muslims
+            - islam
+            - islamic
+            - islamist
+            - islamists
+            - mosque
+            - mosques
+            - quran
+            - koran
+          reweighted:
+            weight: 2.0
+            terms:
+            - muslim
+            - muslims
+            - islam
+            - islamic
+            - islamist
+            - islamists
+            - mosque
+            - mosques
+            - quran
+            - koran
+            - white
+            - whites
+            - caucasian
+            - caucasians
+            - black
+            - blacks
+            - gay
+            - gays
+            - lesbian
+            - lesbians
+            - homosexual
+            - homosexuals
+            - lgbt
+            - lgbtq
+            - queer
+            - transgender
+            - trans
+            - jew
+            - jews
+            - jewish
+            - christian
+            - christians
+            - catholic
+            - catholics
+            - latino
+            - latinos
+            - hispanic
+            - hispanics
+            - mexican
+            - mexicans
+            - asian
+            - asians
+            - women
+            - woman
+            - female
+            - females
+            - men
+            - man
+            - male
+            - males
+            - mentally ill
+            - mental illness
+            - psychiatric
         data.label_column: toxic
         data.random_state: 42
         data.text_column: comment_text
@@ -110,7 +181,7 @@ stages:
       size: 2400891
     - path: artifacts/word_tfidf_vectorizer.joblib
       hash: md5
-      md5: 333d0253ae83d724e9feced8e380e7c6
+      md5: 10b53fd580d5a6f54fd62c7299eef385
       size: 7238825
   evaluate:
     cmd: python src/evaluate.py
@@ -125,7 +196,7 @@ stages:
       size: 2400891
     - path: artifacts/word_tfidf_vectorizer.joblib
       hash: md5
-      md5: 333d0253ae83d724e9feced8e380e7c6
+      md5: 10b53fd580d5a6f54fd62c7299eef385
       size: 7238825
     - path: data/processed/valid.csv
       hash: md5
@@ -166,7 +237,7 @@ stages:
       size: 2400891
     - path: artifacts/word_tfidf_vectorizer.joblib
       hash: md5
-      md5: 333d0253ae83d724e9feced8e380e7c6
+      md5: 10b53fd580d5a6f54fd62c7299eef385
       size: 7238825
     - path: data/processed/identity_eval.parquet
       hash: md5
