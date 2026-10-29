@@ -5,8 +5,8 @@ stages:
     deps:
     - path: src/prepare.py
       hash: md5
-      md5: 982dcac638533724e263064ce2aea584
-      size: 2302
+      md5: e5c0ca4c5e82cfcde4d640f7ee67e411
+      size: 3410
     - path: train.csv
       hash: md5
       md5: 7a687c299462dd009e90db97ac053eef
@@ -22,26 +22,57 @@ stages:
           max_rows: 200000
           random_state: 42
           validation_size: 0.2
+          identity_eval_size: 100000
+          identity_threshold: 0.5
+          identity_columns:
+          - asian
+          - atheist
+          - bisexual
+          - black
+          - buddhist
+          - christian
+          - female
+          - heterosexual
+          - hindu
+          - homosexual_gay_or_lesbian
+          - intellectual_or_learning_disability
+          - jewish
+          - latino
+          - male
+          - muslim
+          - other_disability
+          - other_gender
+          - other_race_or_ethnicity
+          - other_religion
+          - other_sexual_orientation
+          - physical_disability
+          - psychiatric_or_mental_illness
+          - transgender
+          - white
     outs:
+    - path: data/processed/identity_eval.parquet
+      hash: md5
+      md5: c85aed2cc95265245c4709178f9e0e4a
+      size: 24148687
     - path: data/processed/train.csv
       hash: md5
-      md5: 25bcf0368207c5ec07871c6353659c30
-      size: 48335808
+      md5: 9b75580b70516dfa86339c1341ac67f2
+      size: 47885493
     - path: data/processed/valid.csv
       hash: md5
-      md5: 147aced7c2578fc12139c5a41472b6b9
-      size: 12185711
+      md5: fe1e4bc473f62ab41c1a37cb4c1602e9
+      size: 12025535
   train:
     cmd: python src/train.py
     deps:
     - path: data/processed/train.csv
       hash: md5
-      md5: 25bcf0368207c5ec07871c6353659c30
-      size: 48335808
+      md5: 9b75580b70516dfa86339c1341ac67f2
+      size: 47885493
     - path: src/train.py
       hash: md5
-      md5: 1875ceb6b1d9cc9ede6e337b4dd916a1
-      size: 2616
+      md5: c28d9737fcd86b344a4dd5c768652ee1
+      size: 2690
     params:
       params.yaml:
         data.label_column: toxic
@@ -71,39 +102,39 @@ stages:
     outs:
     - path: artifacts/char_tfidf_vectorizer.joblib
       hash: md5
-      md5: a22cbd6f35e293746ae4fe575eac8eea
-      size: 3053123
+      md5: f794177287b2b776e2e7b2bc4d04da32
+      size: 3053092
     - path: artifacts/toxicity_logistic_regression.joblib
       hash: md5
-      md5: ff65461dc0e5845918bd290e266f4b41
+      md5: 80d578b30c9921d33398e9e25151179e
       size: 2400891
     - path: artifacts/word_tfidf_vectorizer.joblib
       hash: md5
-      md5: 196460abf643a15bee42bdce11547965
-      size: 7240519
+      md5: 4f6d5efecbcd1444fa1ce2b4c808242a
+      size: 7238825
   evaluate:
     cmd: python src/evaluate.py
     deps:
     - path: artifacts/char_tfidf_vectorizer.joblib
       hash: md5
-      md5: a22cbd6f35e293746ae4fe575eac8eea
-      size: 3053123
+      md5: f794177287b2b776e2e7b2bc4d04da32
+      size: 3053092
     - path: artifacts/toxicity_logistic_regression.joblib
       hash: md5
-      md5: ff65461dc0e5845918bd290e266f4b41
+      md5: 80d578b30c9921d33398e9e25151179e
       size: 2400891
     - path: artifacts/word_tfidf_vectorizer.joblib
       hash: md5
-      md5: 196460abf643a15bee42bdce11547965
-      size: 7240519
+      md5: 4f6d5efecbcd1444fa1ce2b4c808242a
+      size: 7238825
     - path: data/processed/valid.csv
       hash: md5
-      md5: 147aced7c2578fc12139c5a41472b6b9
-      size: 12185711
+      md5: fe1e4bc473f62ab41c1a37cb4c1602e9
+      size: 12025535
     - path: src/evaluate.py
       hash: md5
-      md5: f00641cd1aa8395208a796acfe4345ce
-      size: 5681
+      md5: 2a1633b5802624fb703444bb11f2b11e
+      size: 5824
     params:
       params.yaml:
         data.label_column: toxic
@@ -116,9 +147,75 @@ stages:
     outs:
     - path: artifacts/model_metadata.json
       hash: md5
-      md5: 3b707aff6916ba4dce2e3b9f3cb61b5e
-      size: 1450
+      md5: 9cdf1cc0c6a64b3944b496100223e5c9
+      size: 1507
     - path: metrics/metrics.json
       hash: md5
-      md5: bdb916d2cc55384e4356cae65ff6b21f
-      size: 6970
+      md5: 3ef52389898ed5b5880889d3c96f8081
+      size: 7249
+  bias_eval:
+    cmd: python src/bias_eval.py
+    deps:
+    - path: artifacts/char_tfidf_vectorizer.joblib
+      hash: md5
+      md5: f794177287b2b776e2e7b2bc4d04da32
+      size: 3053092
+    - path: artifacts/toxicity_logistic_regression.joblib
+      hash: md5
+      md5: 80d578b30c9921d33398e9e25151179e
+      size: 2400891
+    - path: artifacts/word_tfidf_vectorizer.joblib
+      hash: md5
+      md5: 4f6d5efecbcd1444fa1ce2b4c808242a
+      size: 7238825
+    - path: data/processed/identity_eval.parquet
+      hash: md5
+      md5: c85aed2cc95265245c4709178f9e0e4a
+      size: 24148687
+    - path: src/bias_eval.py
+      hash: md5
+      md5: 9e39758fca25f2745510d8e0755b97f6
+      size: 5400
+    params:
+      params.yaml:
+        bias:
+          power: -5
+          weights:
+            overall: 0.25
+            subgroup: 0.25
+            bpsn: 0.25
+            bnsp: 0.25
+          min_subgroup_size: 500
+        data.identity_columns:
+        - asian
+        - atheist
+        - bisexual
+        - black
+        - buddhist
+        - christian
+        - female
+        - heterosexual
+        - hindu
+        - homosexual_gay_or_lesbian
+        - intellectual_or_learning_disability
+        - jewish
+        - latino
+        - male
+        - muslim
+        - other_disability
+        - other_gender
+        - other_race_or_ethnicity
+        - other_religion
+        - other_sexual_orientation
+        - physical_disability
+        - psychiatric_or_mental_illness
+        - transgender
+        - white
+        data.identity_threshold: 0.5
+        data.label_column: toxic
+        data.text_column: comment_text
+    outs:
+    - path: metrics/bias.json
+      hash: md5
+      md5: 013adfda2e2f7351f928472114e76756
+      size: 2635

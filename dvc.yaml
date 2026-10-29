@@ -9,6 +9,7 @@ stages:
     outs:
       - data/processed/train.csv
       - data/processed/valid.csv
+      - data/processed/identity_eval.parquet
 
   train:
     cmd: python src/train.py
@@ -42,4 +43,22 @@ stages:
       - artifacts/model_metadata.json
     metrics:
       - metrics/metrics.json:
+          cache: false
+
+  bias_eval:
+    cmd: python src/bias_eval.py
+    deps:
+      - src/bias_eval.py
+      - data/processed/identity_eval.parquet
+      - artifacts/word_tfidf_vectorizer.joblib
+      - artifacts/char_tfidf_vectorizer.joblib
+      - artifacts/toxicity_logistic_regression.joblib
+    params:
+      - data.text_column
+      - data.label_column
+      - data.identity_columns
+      - data.identity_threshold
+      - bias
+    metrics:
+      - metrics/bias.json:
           cache: false

@@ -7,6 +7,35 @@ data:
   max_rows: 200000
   random_state: 42
   validation_size: 0.20
+  # Fixed hold-out of identity-labelled rows, removed before the training
+  # sample is drawn so it never overlaps train/valid. Bias metrics use it.
+  identity_eval_size: 100000
+  identity_threshold: 0.5
+  identity_columns:
+    - asian
+    - atheist
+    - bisexual
+    - black
+    - buddhist
+    - christian
+    - female
+    - heterosexual
+    - hindu
+    - homosexual_gay_or_lesbian
+    - intellectual_or_learning_disability
+    - jewish
+    - latino
+    - male
+    - muslim
+    - other_disability
+    - other_gender
+    - other_race_or_ethnicity
+    - other_religion
+    - other_sexual_orientation
+    - physical_disability
+    - psychiatric_or_mental_illness
+    - transgender
+    - white
 
 features:
   word:
@@ -36,3 +65,16 @@ evaluation:
   threshold_min: 0.10
   threshold_max: 0.90
   threshold_step: 0.02
+
+bias:
+  # Borkan et al. (arXiv:1903.04561): generalized mean with p = -5 so the
+  # worst subgroup dominates; all four components weighted equally.
+  power: -5
+  weights:
+    overall: 0.25
+    subgroup: 0.25
+    bpsn: 0.25
+    bnsp: 0.25
+  # Subgroups with fewer eval rows are reported but excluded from the score
+  # and the gate, since their AUCs are too noisy.
+  min_subgroup_size: 500
