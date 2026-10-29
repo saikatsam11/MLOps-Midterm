@@ -1,82 +1,424 @@
-# Model training and bias evaluation
+# Model training, MLflow and Jenkins: reproduction guide
 
-How to reproduce the baseline model and its bias metrics from scratch.
+This guide reproduces the modelling part of the project step by step:
 
-## 1. Environment
+1. train the TF-IDF + logistic regression model and measure its bias with DVC,
+2. run the same pipeline in Jenkins, tracked and registered in MLflow,
+3. show the **fairness gate** blocking a more accurate but less fair model,
+4. (optional) the hyperparameter search and the DistilBERT model.
 
-Python 3.12. From the repository root:
+Commands are given for **Windows PowerShell** and **Linux / macOS**. Run every
+command from the repository root unless a step says otherwise.
 
-```bash
-python -m venv .venv
-# Windows
-.venv\Scripts\activate
-# Linux / macOS
-source .venv/bin/activate
+> Content warning: the dataset contains abusive and offensive text.
 
-pip install -r requirements-train.txt
+---
+
+## Before you start
+
+Install these first:
+
+| Tool | Version | Check with |
+|---|---|---|
+| Git | any recent | `git --version` |
+| Python | **3.12** | Windows: `py -3.12 --version` / Linux, macOS: `python3.12 --version` |
+| Docker Desktop (or Docker Engine + Compose) | any recent | `docker compose version` |
+
+You also need a Google account that has been given access to the project's
+DVC data folder on Google Drive.
+
+---
+
+## Step 1. Clone the repository and install
+
+**Windows (PowerShell)**
+
+```powershell
+git clone https://github.com/saikatsam11/MLOps-Midterm.git
+cd MLOps-Midterm
+py -3.12 -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install -r requirements-train.txt
 ```
 
-## 2. Data
+If PowerShell refuses to run `Activate.ps1`, run
+`Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` once in that window
+and try again.
 
-The dataset is versioned with DVC (`train.csv.dvc`). Fetch it into the
-repository root:
+**Linux / macOS**
+
+```bash
+git clone https://github.com/saikatsam11/MLOps-Midterm.git
+cd MLOps-Midterm
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements-train.txt
+```
+
+**Check:** run the unit tests.
+
+```bash
+pytest -q tests
+```
+
+You should see `34 passed`. Keep this terminal open with the virtual
+environment active (the prompt starts with `(.venv)`) for the next steps.
+
+---
+
+## Step 2. Download the data
 
 ```bash
 dvc pull
 ```
 
-> Content warning: the dataset contains abusive and offensive text.
+A browser window opens: sign in with the Google account that has access to the
+data and allow access. When the command finishes, `train.csv` is in the
+repository root.
 
-## 3. Run the pipeline
+> Do this **before** Step 4. The Google sign-in returns to `http://localhost:8080`,
+> the same port Jenkins uses; if Jenkins is already running, the sign-in cannot
+> finish. If that happens, stop Jenkins
+> (`docker compose -f jenkins/docker-compose.yml stop`), run `dvc pull`, then
+> start it again.
+
+---
+
+## Step 3. Run the training pipeline
 
 ```bash
 dvc repro
 ```
 
-Stages (`dvc.yaml`):
+This runs four stages: `prepare` > `train` > `evaluate` > `bias_eval`.
+The last lines printed should be:
+
+```
+Overall AUC: 0.9047
+Final bias-aware score: 0.8624
+```
+
+followed by a table with the bias metrics of each identity subgroup. The
+results are written to `metrics/metrics.json` (overall metrics) and
+`metrics/bias.json` (bias metrics). Both are committed to the repository, and
+`git diff metrics/` should show no changes: the pipeline is deterministic.
+
+---
+
+## Step 4. Start Jenkins and MLflow
+
+Jenkins and the MLflow tracking server run together in Docker.
+
+**4a. Give Docker enough memory (at least 11 GB).** The fairness gate demo in
+Step 7 trains on 400,000 rows.
+
+- **Windows:** Docker Desktop runs inside WSL2, which only gets half of the
+  computer's RAM by default. Create the file `C:\Users\<your user>\.wslconfig`
+  with this content:
+
+  ```ini
+  [wsl2]
+  memory=11GB
+  ```
+
+  Quit Docker Desktop, run `wsl --shutdown` in PowerShell, and start Docker
+  Desktop again.
+- **macOS / Linux Docker Desktop:** *Settings > Resources > Memory*, set 11 GB
+  or more, *Apply & restart*.
+
+Check: `docker info --format "{{.MemTotal}}"` should print a number of at least
+`11000000000`.
+
+**4b. Start the containers.**
+
+```bash
+docker compose -f jenkins/docker-compose.yml up -d --build
+```
+
+The first start builds two images. When it finishes:
+
+| Open | URL |
+|---|---|
+| Jenkins | <http://localhost:8080> |
+| MLflow | <http://localhost:5000> |
+
+If port 8080 is already used by something else, start with another port instead:
+PowerShell `$env:JENKINS_PORT=8081; docker compose -f jenkins/docker-compose.yml up -d --build`,
+Linux / macOS `JENKINS_PORT=8081 docker compose -f jenkins/docker-compose.yml up -d --build`,
+and open <http://localhost:8081>.
+
+---
+
+## Step 5. Set up Jenkins (one time)
+
+**5a. Unlock Jenkins.** Get the initial admin password:
+
+```bash
+docker exec jenkins-toxicity cat /var/jenkins_home/secrets/initialAdminPassword
+```
+
+Open Jenkins, paste the password, choose **Install suggested plugins**, wait for
+the plugins to install, and create an admin user.
+
+**5b. Add the data credential.** Jenkins cannot open a browser to sign in to
+Google, so it reuses the login that `dvc pull` saved in Step 2. Find that file:
+
+- **Windows:** press **Win + R**, enter `%LOCALAPPDATA%\pydrive2fs\Cache` and
+  press Enter. Open the folder inside it (its name ends in
+  `.apps.googleusercontent.com`); the file is `default.json`.
+- **Linux:** `~/.cache/pydrive2fs/<folder>/default.json`
+- **macOS:** `~/Library/Caches/pydrive2fs/<folder>/default.json`
+
+In Jenkins: **Manage Jenkins > Credentials > System > Global credentials
+(unrestricted) > Add Credentials**, then:
+
+| Field | Value |
+|---|---|
+| Kind | **Secret file** |
+| File | the `default.json` above (on Windows, paste its full path into the file dialog's *File name* box; `AppData` is hidden) |
+| ID | `gdrive-user-credentials` |
+
+Click **Create**. The pipeline never prints this file's contents in the build
+log. It gives access to that Google account's Drive, so keep it only in
+Jenkins.
+
+**5c. Create the pipeline job.** **+ New Item**, name `toxicity-cd`, select
+**Pipeline**, **OK**. In the **Pipeline** section:
+
+| Field | Value |
+|---|---|
+| Definition | Pipeline script from SCM |
+| SCM | Git |
+| Repository URL | `https://github.com/saikatsam11/MLOps-Midterm.git` |
+| Branch Specifier | `*/main` |
+| Script Path | `Jenkinsfile` |
+
+Click **Save**.
+
+---
+
+## Step 6. Run the pipeline in Jenkins
+
+Open the `toxicity-cd` job and click **Build Now** (the first build always uses
+the default parameters; from then on the button is **Build with Parameters**).
+
+The build runs these stages: Checkout > Setup > Unit Tests > Fetch Data >
+Reproduce Pipeline > Log to MLflow > Fetch Production Baseline > Fairness Gate >
+Promote. It should finish green. In the build's **Console Output** look for:
+
+```
+Overall AUC: 0.9047
+Final bias-aware score: 0.8624
+Registered toxicity-classifier version 1 -> alias 'staging'
+No production baseline found; first model is promoted.
+FAIRNESS GATE PASSED.
+Promoted toxicity-classifier v1 to 'production' (was none).
+```
+
+The same numbers as Step 3, now produced in a clean Linux container.
+
+**See it in MLflow** (<http://localhost:5000>):
+
+- **Experiments > `toxicity-bias`**: the run with all parameters, about 50
+  metrics (including `<identity>.bpsn_auc` for every subgroup), the threshold
+  sweep curves `sweep_f1` / `sweep_precision` / `sweep_recall`, and the
+  artifacts (metric files and the model).
+- **Models > `toxicity-classifier`**: version 1 with the aliases `@production`
+  and `@staging`.
+
+---
+
+## Step 7. Fairness gate demo
+
+Two new candidate models are trained on **twice as much data** (400,000 rows)
+and checked by the fairness gate against the production model from Step 6:
+
+| Candidate | `CANDIDATE` | What changes in training |
+|---|---|---|
+| A | `imbalanced` | half of the **non-toxic** comments that mention Muslims are left out, so the model sees that identity mostly in toxic comments |
+| B | `reweighted` | **non-toxic** comments that mention any identity count twice as much in training |
+
+Run **Build with Parameters** twice, waiting for the first build to finish
+before starting the second:
+
+| Build | `CANDIDATE` | `MAX_ROWS` | Expected result |
+|---|---|---|---|
+| Candidate A | `imbalanced` | `400000` | **red**, stopped at *Fairness Gate* |
+| Candidate B | `reweighted` | `400000` | **green**, promoted to `@production` |
+
+Leave the other parameters at their defaults.
+
+**What to look for:**
+
+- **Candidate A's Console Output** shows the gate's check table. Overall AUC and
+  the final score went **up**, but one subgroup went down:
+
+  ```
+  muslim.bpsn_auc            0.7244   0.7751  -0.0507  -0.0100  FAIL
+  FAIRNESS GATE BLOCKED: 2 check(s) regressed: muslim.bpsn_auc, transgender.subgroup_auc
+  ```
+
+  In MLflow, **Models > `toxicity-classifier`**: this version is tagged
+  `gate=blocked` with the failed checks in `gate_failed`. The build page's
+  **Build Artifacts** keep `metrics/gate_report.json` and `metrics/bias.json`.
+- **Candidate B's Console Output** ends with `FAIRNESS GATE PASSED.` and
+  `Promoted toxicity-classifier v3 to 'production' (was v1).`
+
+The numbers are in [Results](#results).
+
+**To run the demo again**, first move `@production` back to version 1 (a
+registry rollback):
+
+```bash
+python -c "from mlflow import MlflowClient; MlflowClient('http://127.0.0.1:5000').set_registered_model_alias('toxicity-classifier', 'production', '1')"
+```
+
+---
+
+## Step 8 (optional). Hyperparameter search in MLflow
+
+With the containers from Step 4 running and the virtual environment active:
+
+```bash
+python src/tune.py
+```
+
+It trains 6 logistic regression variants (`C` = 0.5, 1, 4 x `class_weight` =
+balanced, none) on a 40,000-row subsample and prints a results table.
+
+In MLflow open **Experiments > `toxicity-tuning`**, expand the parent run
+`tfidf-grid-search`, select the 6 child runs, click **Compare**, and choose
+**Parallel Coordinates** with `C`, `class_weight`, `valid_roc_auc` and
+`min_bpsn_auc`. The variant with the best validation AUC is not the one with the
+best worst-case BPSN: accuracy and fairness pull in different directions.
+
+---
+
+## Step 9 (optional). DistilBERT
+
+DistilBERT needs a GPU, so it is trained on Google Colab. Its evaluated results
+are already committed in `metrics/distilbert/` and summarised in
+[Results](#results); these steps retrain it.
+
+1. After Step 3, upload `data/processed/train.csv`, `data/processed/valid.csv`
+   and `data/processed/identity_eval.parquet` to a Google Drive folder named
+   `toxicity-mlops/data` (inside *My Drive*).
+2. Open <https://colab.research.google.com>, **File > Upload notebook**, choose
+   `notebooks/train_distilbert_colab.ipynb`.
+3. **Runtime > Change runtime type > T4 GPU** (any GPU works), then
+   **Runtime > Run all**. Allow Colab to access Google Drive when asked.
+4. When it finishes, download the folder `My Drive/toxicity-mlops/distilbert_out`
+   into the repository root, so that `distilbert_out/valid_scores.csv` exists.
+5. Score it with the same evaluation code as the baseline, and log it to MLflow
+   (containers from Step 4 running):
+
+   ```bash
+   python src/evaluate.py  --scores distilbert_out/valid_scores.csv         --out-dir metrics/distilbert
+   python src/bias_eval.py --scores distilbert_out/identity_eval_scores.csv --out-dir metrics/distilbert
+   python src/log_mlflow.py --run-name distilbert --metrics-dir metrics/distilbert --external-model distilbert_out
+   ```
+
+   In MLflow **Experiments > `toxicity-bias`**, select the `distilbert` run and a
+   baseline run and click **Compare**.
+
+---
+
+## Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| `dvc pull` sign-in never completes | Jenkins is using port 8080. Stop it (`docker compose -f jenkins/docker-compose.yml stop`), run `dvc pull`, start it again. |
+| Jenkins build fails at *Fetch Data* with `Could not find credentials entry with ID 'gdrive-user-credentials'` | Step 5b was skipped or the ID is misspelled. |
+| Jenkins build fails at *Fetch Data* with an `SSL` error | A dropped connection to Google. Run the build again. |
+| Jenkins build fails at *Reproduce Pipeline* with `exited with 137` | Docker ran out of memory. Do Step 4a. |
+| **Build with Parameters** does not show `CANDIDATE` | Jenkins reads the parameters during the first build. Run one build with the defaults first. |
+| A second MLflow server will not start on port 5000 | The Jenkins stack already serves MLflow there; use <http://localhost:5000>. |
+| Stop everything | `docker compose -f jenkins/docker-compose.yml down` (add `-v` to also delete all Jenkins and MLflow data). |
+
+---
+
+## Results
+
+### Baseline vs DistilBERT
+
+Same training data (160,000 rows), same validation set (40,000 rows), same
+identity hold-out (100,000 rows), same evaluation code.
+
+| Metric | TF-IDF + LR | DistilBERT |
+|---|---|---|
+| Validation ROC-AUC | 0.929 | **0.966** |
+| Best validation F1 | 0.614 | **0.692** |
+| Identity hold-out AUC | 0.905 | **0.946** |
+| Final bias-aware score | 0.862 | **0.914** |
+| Lowest subgroup BPSN AUC | 0.734 (white) | 0.822 (homosexual_gay_or_lesbian) |
+
+DistilBERT is better on every metric and every subgroup, but bias is reduced,
+not removed: BPSN is still its weakest metric.
+
+### Fairness gate demo (Step 7)
+
+All three models are scored on the same 100,000-row identity hold-out:
+
+| Model | Overall AUC | Final score | muslim BPSN | Lowest BPSN | Gate |
+|---|---|---|---|---|---|
+| Production (standard, 200k rows) | 0.9047 | 0.8624 | 0.775 | 0.734 (white) | |
+| A: imbalanced, 400k rows | **0.9101 (+0.0054)** | **0.8670 (+0.0046)** | **0.724 (-0.051)** | 0.724 (muslim) | **BLOCKED**: `muslim.bpsn_auc` -0.051, `transgender.subgroup_auc` -0.011 |
+| B: reweighted, 400k rows | 0.9066 (+0.0019) | 0.8692 (+0.0068) | 0.812 (+0.037) | 0.776 (black) | **PASSED**: BPSN improves for all 12 subgroups |
+
+Candidate A is better on overall AUC and on the final score, yet the gate blocks
+it because one subgroup regresses. Its second failed check,
+`transgender.subgroup_auc`, is on a 630-row subgroup close to the 500-row
+cutoff, where AUCs are noisy.
+
+---
+
+## How it works (reference)
+
+### Pipeline (`dvc.yaml`)
 
 | Stage | Script | Output |
 |---|---|---|
 | `prepare` | `src/prepare.py` | `data/processed/train.csv`, `valid.csv`, `identity_eval.parquet` |
 | `train` | `src/train.py` | TF-IDF vectorizers + logistic regression in `artifacts/` |
-| `evaluate` | `src/evaluate.py` | `metrics/metrics.json` (overall AUC, F1, threshold sweep) |
-| `bias_eval` | `src/bias_eval.py` | `metrics/bias.json` (per-identity bias metrics) |
+| `evaluate` | `src/evaluate.py` | `metrics/metrics.json`: overall AUC, F1, threshold sweep |
+| `bias_eval` | `src/bias_eval.py` | `metrics/bias.json`: per-identity bias metrics |
 
-All settings live in `params.yaml`. `dvc repro` reruns only the stages whose
-code, data or parameters changed. View metrics with `dvc metrics show`.
+All settings are in `params.yaml`. `dvc repro` reruns only the stages whose
+code, data or parameters changed.
 
-### Identity hold-out
+**Identity hold-out.** Identity labels exist only on a subset of comments.
+`prepare.py` first samples `data.identity_eval_size` (100,000) identity-labelled
+rows with a fixed seed into `identity_eval.parquet` and removes them *before*
+the training sample is drawn, so bias metrics are always computed on comments
+no model was trained on, and are comparable across runs and training sizes.
 
-Identity labels exist only on a subset of comments. `prepare.py` first samples
-`data.identity_eval_size` identity-labelled rows (fixed seed) into
-`identity_eval.parquet` and removes them from the pool *before* the training
-sample is drawn, so bias metrics are always computed on rows the model never
-saw and are comparable across runs.
+**Training strategies** (`candidate.strategy` in `params.yaml`): `standard`
+(the production recipe), `imbalanced` and `reweighted` (Step 7). Identity
+mentions are found by whole-word matching against the term lists in
+`params.yaml`.
 
-## 4. Bias metrics
+### Bias metrics
 
 From Borkan et al., *Nuanced Metrics for Measuring Unintended Bias with Real
 Data for Text Classification* (arXiv:1903.04561). A comment belongs to an
 identity subgroup when its identity score is `>= 0.5`.
 
-| Metric | Computed on | Low value means |
+| Metric | Computed on | A low value means |
 |---|---|---|
-| Subgroup AUC | comments mentioning the identity | model cannot rank toxicity within the subgroup |
-| BPSN AUC | non-toxic subgroup + toxic background | non-toxic identity mentions are over-flagged (false positives) |
-| BNSP AUC | toxic subgroup + non-toxic background | toxic identity comments are missed (false negatives) |
-
-Final score:
+| Subgroup AUC | comments mentioning the identity | the model cannot rank toxicity within the subgroup |
+| BPSN AUC | non-toxic subgroup + toxic background comments | non-toxic identity mentions are over-flagged (false positives) |
+| BNSP AUC | toxic subgroup + non-toxic background comments | toxic identity comments are missed (false negatives) |
 
 ```
-score = 0.25 * overall_auc + 0.25 * M(subgroup_auc) + 0.25 * M(bpsn_auc) + 0.25 * M(bnsp_auc)
-M(x)  = ( mean(x_s ^ p) ) ^ (1/p),  p = -5
+final score = 0.25 * overall_auc + 0.25 * M(subgroup_auc) + 0.25 * M(bpsn_auc) + 0.25 * M(bnsp_auc)
+M(x)        = ( mean over subgroups of x_s ^ p ) ^ (1/p),   p = -5
 ```
 
 The negative power makes the worst subgroup dominate. Subgroups with fewer
-than `bias.min_subgroup_size` (500) evaluation rows are listed under
-`excluded_subgroups` and left out of the score, since their AUCs are noisy.
+than 500 evaluation rows (`bias.min_subgroup_size`) are listed under
+`excluded_subgroups` in `bias.json` and left out of the score and the gate.
 
-`metrics/bias.json` schema (read by the fairness gate):
+`metrics/bias.json`:
 
 ```json
 {
@@ -91,338 +433,126 @@ than `bias.min_subgroup_size` (500) evaluation rows are listed under
 }
 ```
 
-## 5. Fairness gate
+### Fairness gate (`scripts/fairness_gate.py`)
 
-`scripts/fairness_gate.py` decides whether a newly trained model may replace
-the production model. It compares the candidate's `bias.json` with the
-production model's `bias.json`:
+Compares the candidate's `bias.json` with the production model's:
 
 ```
 PROMOTE if
-    overall_auc                >= prod - 0.002
-    final_score                >= prod
-    subgroup_auc, every group  >= prod - 0.01
-    bpsn_auc,     every group  >= prod - 0.01
+    overall_auc                >= production - 0.002
+    final_score                >= production
+    subgroup_auc, every group  >= production - 0.01
+    bpsn_auc,     every group  >= production - 0.01
 BLOCK otherwise
 ```
 
-Tolerances live in the `gate` section of `params.yaml`. A subgroup that is in
-production but missing from the candidate also blocks. BNSP is reported in
-`bias.json` but not gated.
+Tolerances are in the `gate` section of `params.yaml`. A subgroup present in
+production but missing from the candidate also blocks; BNSP is reported but not
+gated. Exit code `0` = promote, `1` = block, so the Jenkins stage fails on a
+block. Every check is printed and saved to `metrics/gate_report.json` before
+the decision. With no production model yet, the candidate is promoted.
+
+Run it by hand:
 
 ```bash
-# first model: no production baseline yet, always promoted
-python scripts/fairness_gate.py --candidate metrics/bias.json
-
-# compare against production
-python scripts/fairness_gate.py --candidate metrics/bias.json --production prod_bias.json
+python scripts/fairness_gate.py --candidate metrics/bias.json --production <production bias.json>
 ```
 
-Exit code `0` = promote, `1` = blocked, so a CI stage fails on a block. Every
-check is printed as a table and saved to `metrics/gate_report.json` before
-the decision. A blocked run ends with the offending checks named, e.g.:
-
-```
-muslim.bpsn_auc      0.7451   0.7751  -0.0300  -0.0100  FAIL
-FAIRNESS GATE BLOCKED: 1 check(s) regressed: muslim.bpsn_auc
-```
-
-## 6. MLflow tracking and model registry
-
-### Start the tracking server
-
-```bash
-mlflow server --backend-store-uri sqlite:///mlflow.db --artifacts-destination ./mlartifacts --host 127.0.0.1 --port 5000
-```
-
-UI: <http://127.0.0.1:5000>. Runs and the registry live in `mlflow.db`, model
-files in `mlartifacts/` (both git-ignored). Scripts use
-`$MLFLOW_TRACKING_URI`, defaulting to `http://127.0.0.1:5000`.
-
-If the Jenkins stack from section 7 is running, it already serves MLflow on
-port 5000: skip this step and the local scripts log to that server, so local
-runs and Jenkins builds share one registry.
-
-### Log, gate and promote a model
-
-After `dvc repro`:
-
-```bash
-python src/log_mlflow.py --run-name baseline        # 1. log run, register new version, alias @staging
-python scripts/promote.py fetch-baseline            # 2. download @production's bias.json (none on first run)
-python scripts/fairness_gate.py --candidate metrics/bias.json --production metrics/prod_bias.json   # 3. gate
-python scripts/promote.py promote                   # 4a. gate passed: move @production to the candidate
-python scripts/promote.py reject                    # 4b. gate blocked: tag the candidate as blocked
-```
+### MLflow
 
 | Logged to each run | |
 |---|---|
-| Params | every value in `params.yaml` (flattened, e.g. `model.C`, `bias.power`) |
+| Params | every value in `params.yaml`, flattened (e.g. `model.C`, `bias.power`) |
 | Metrics | validation AUC / F1 / precision / recall, best threshold, overall AUC and final score on the identity hold-out, power means, and `<identity>.subgroup_auc` / `.bpsn_auc` / `.bnsp_auc` for every eligible subgroup |
 | Curves | `sweep_precision`, `sweep_recall`, `sweep_f1` over the threshold sweep (step = threshold x 100) |
-| Tags | `candidate`, `git_commit`, `data_md5`, `model_family`, `jenkins_build` (when run in Jenkins) |
-| Artifacts | `metrics/metrics.json`, `metrics/bias.json`, `params.yaml`, `model_metadata.json`, and the model |
-
-### Registry
+| Tags | `candidate`, `git_commit`, `data_md5`, `model_family`, `jenkins_build` |
+| Artifacts | `metrics.json`, `bias.json`, `params.yaml`, `model_metadata.json`, and the model |
 
 The model is registered as **`toxicity-classifier`**: an MLflow pyfunc that
 bundles both TF-IDF vectorizers and the classifier (`src/toxicity_pyfunc.py`).
-Lifecycle uses registry aliases (MLflow 3 replaces stages with aliases):
+The registry uses aliases (MLflow 3 replaces stages with aliases): `@staging` is
+the latest candidate, `@production` the model that passed the gate. Blocked
+versions are tagged `gate=blocked` and `gate_failed`; promoted ones `gate=passed`.
 
-| Alias | Meaning |
-|---|---|
-| `@staging` | most recently logged candidate |
-| `@production` | the model that passed the fairness gate and is serving |
-
-Blocked candidates are tagged `gate=blocked` with the failed checks in
-`gate_failed`; promoted ones are tagged `gate=passed`.
-
-Load the production model anywhere:
+Load the production model:
 
 ```python
 import mlflow, pandas as pd
+mlflow.set_tracking_uri("http://127.0.0.1:5000")
 model = mlflow.pyfunc.load_model("models:/toxicity-classifier@production")
 model.predict(pd.DataFrame({"comment_text": ["I am a gay man."]}))
 ```
 
-## 7. Jenkins CD pipeline
-
-Jenkins and MLflow run together in Docker (`jenkins/`). Jenkins reaches the
-tracking server at `http://mlflow:5000`.
-
-### Start
-
-Requires Docker Desktop (or Docker Engine) with Compose, and at least **11 GB of
-memory for Docker**: training on 400k rows (section 10) needs it. Docker Desktop
-on Windows runs in WSL2, which gets half of system RAM by default. To raise it,
-create `C:\Users\<you>\.wslconfig` containing:
-
-```ini
-[wsl2]
-memory=11GB
-```
-
-then run `wsl --shutdown` and restart Docker Desktop. Check with
-`docker info --format "{{.MemTotal}}"`. On macOS / Linux Docker Desktop, set it
-under *Settings > Resources > Memory*.
+The same steps Jenkins runs can be run by hand after `dvc repro`:
 
 ```bash
-docker compose -f jenkins/docker-compose.yml up -d --build
+python src/log_mlflow.py --run-name baseline     # log the run, register a version, alias @staging
+python scripts/promote.py fetch-baseline         # download @production's bias.json to metrics/prod_bias.json
+python scripts/fairness_gate.py --candidate metrics/bias.json --production metrics/prod_bias.json
+python scripts/promote.py promote                # gate passed: move @production to the candidate
+python scripts/promote.py reject                 # gate blocked: tag the candidate as blocked
 ```
 
-| Service | URL | Container |
-|---|---|---|
-| Jenkins | <http://localhost:8080> | `jenkins-toxicity` |
-| MLflow | <http://localhost:5000> | `mlflow-toxicity` |
+### Jenkins (`Jenkinsfile`, `jenkins/`)
 
-If port 8080 is taken, choose another: `JENKINS_PORT=8081 docker compose -f jenkins/docker-compose.yml up -d --build`.
-
-Stop with `docker compose -f jenkins/docker-compose.yml down` (add `-v` to
-also delete Jenkins and MLflow data).
-
-### First-time Jenkins setup
-
-1. Get the initial admin password:
-   `docker exec jenkins-toxicity cat /var/jenkins_home/secrets/initialAdminPassword`
-2. Open Jenkins, paste it, choose **Install suggested plugins**, create an admin user.
-3. **New Item** > name `toxicity-cd` > **Pipeline** > OK.
-4. Under **Pipeline**: Definition **Pipeline script from SCM**, SCM **Git**,
-   Repository URL `https://github.com/saikatsam11/MLOps-Midterm.git`,
-   Branch `*/main`, Script Path `Jenkinsfile`. Save.
-5. Data access for `DATA_SOURCE=dvc`. Jenkins cannot open a browser to sign
-   in to Google, so it reuses the login that DVC saves on your machine:
-   1. Run `dvc pull` once locally with a Google account that has access to the
-      DVC Drive folder. DVC saves the login (with a refresh token) to
-      `%LOCALAPPDATA%\pydrive2fs\Cache\<client-id>\default.json` on Windows,
-      `~/.cache/pydrive2fs/<client-id>/default.json` on Linux, or
-      `~/Library/Caches/pydrive2fs/<client-id>/default.json` on macOS.
-   2. **Manage Jenkins > Credentials > System > Global credentials > Add
-      Credentials**: kind **Secret file**, ID `gdrive-user-credentials`, upload
-      that `default.json`.
-
-   The pipeline passes it to DVC as `GDRIVE_CREDENTIALS_DATA` with command
-   tracing switched off, so the token never appears in the build log. The file
-   grants access to that Google account's Drive: keep it in Jenkins only and
-   never commit it.
-6. Optional, build on every push: in the job enable **GitHub hook trigger for
-   GITScm polling**, and add a GitHub webhook to
-   `https://<public-jenkins-host>/github-webhook/` (for a local Jenkins, expose
-   it with a tunnel such as ngrok).
-
-The first build registers the job's parameters; after that use **Build with Parameters**.
-
-### Parameters
+`jenkins/docker-compose.yml` runs Jenkins (with Python 3.12 via `uv`) and an
+MLflow server (SQLite registry, artifacts on a Docker volume); Jenkins reaches
+MLflow at `http://mlflow:5000`.
 
 | Parameter | Default | Effect |
 |---|---|---|
-| `DATA_SOURCE` | `dvc` | `dvc`: `dvc pull` from the Drive remote using the credential above. `mounted`: use `train.csv` from the folder mounted at `/datasets` (set `DATASET_DIR=<folder>` when starting compose) |
-| `CANDIDATE` | `standard` | training strategy, `candidate.strategy` in `params.yaml`: `standard`, `imbalanced` or `reweighted` (see section 10) |
-| `RUN_LABEL` | *(empty)* | MLflow run name and `candidate` tag; empty uses the `CANDIDATE` value |
-| `MAX_ROWS` | *(empty)* | override `data.max_rows`. Any size is a fair comparison: every candidate is scored on the same fixed identity hold-out |
+| `DATA_SOURCE` | `dvc` | `dvc`: `dvc pull` with the `gdrive-user-credentials` credential. `mounted`: use `train.csv` from a folder mounted at `/datasets` (start compose with `DATASET_DIR=<folder>`) |
+| `CANDIDATE` | `standard` | training strategy: `standard`, `imbalanced` or `reweighted` |
+| `RUN_LABEL` | *(empty)* | MLflow run name; empty uses the `CANDIDATE` value |
+| `MAX_ROWS` | *(empty)* | override `data.max_rows`; every size is scored on the same identity hold-out |
 | `DEPLOY` | `false` | after promotion, build `docker/Dockerfile.api` and `kubectl set image` the `toxicity-api` deployment |
 | `IMAGE` | `toxicity-api` | image name used when `DEPLOY` is on |
-
-### Stages
 
 | Stage | What it does | Fails the build when |
 |---|---|---|
 | Checkout | clone the repository | |
-| Setup | create a Python 3.12 venv with `uv`, install `requirements-train.txt` | |
-| Unit Tests | `pytest`, results shown in the Jenkins test report | any test fails |
+| Setup | Python 3.12 venv with `uv`, install `requirements-train.txt` | |
+| Unit Tests | `pytest`, shown in the Jenkins test report | a test fails |
 | Fetch Data | `dvc pull train.csv`, or link the mounted copy | data unavailable |
-| Reproduce Pipeline | `dvc repro`: prepare > train > evaluate > bias_eval | any stage fails |
+| Reproduce Pipeline | `dvc repro` | a stage fails |
 | Log to MLflow | log the run, register a new version, alias `@staging` | |
-| Fetch Production Baseline | download `@production`'s `bias.json` (none on the first build) | |
-| Fairness Gate | compare candidate vs production; on a block, tag the version `gate=blocked` | **any gated metric regresses** |
+| Fetch Production Baseline | download `@production`'s `bias.json` | |
+| Fairness Gate | compare candidate vs production; on a block, tag the version `gate=blocked` | **a gated metric regresses** |
 | Promote | move `@production` to the candidate | |
-| Build API Image / Deploy to Kubernetes | only when `DEPLOY` is on (needs the serving Dockerfile, the K8s deployment, and the docker/kubectl CLIs in the Jenkins image) | |
+| Build API Image / Deploy to Kubernetes | only when `DEPLOY` is on | |
 
-`post` always archives `metrics/*.json` (including `bias.json` and
-`gate_report.json`), `dvc.lock`, `params.yaml` and the test report, so a
-blocked build keeps the evidence of why it was blocked. The workspace is
-cleaned after every build.
+After every build, `metrics/*.json` (including `bias.json` and
+`gate_report.json`), `dvc.lock`, `params.yaml` and the test report are archived
+with the build, so a blocked build keeps the evidence of why it was blocked.
 
-## 8. DistilBERT (GPU, Google Colab)
+To build on every `git push`, enable **GitHub hook trigger for GITScm polling**
+in the job and add a GitHub webhook to `https://<public-jenkins-host>/github-webhook/`
+(a local Jenkins needs a tunnel such as ngrok).
 
-`src/train_distilbert.py` fine-tunes `distilbert-base-uncased` with a single
-logit trained by **soft-label BCE** on the continuous `target` score (the
-fraction of annotators who rated the comment toxic). It uses the same
-`train.csv` / `valid.csv` / `identity_eval.parquet` as the baseline, so the
-two models are compared on identical data.
+### DistilBERT (`src/train_distilbert.py`)
 
 | Setting | Value |
 |---|---|
 | Model | `distilbert-base-uncased`, 1 output logit |
-| Loss | `BCEWithLogitsLoss` against `target` (soft labels) |
-| Data | 160,000 train rows from `prepare.py` (same as the baseline) |
+| Loss | `BCEWithLogitsLoss` against the continuous `target` score (soft labels: the fraction of annotators who rated the comment toxic) |
+| Data | the same 160,000 training rows as the baseline |
 | Epochs / batch / max length | 2 / 32 / 192 tokens |
 | Optimizer | AdamW, lr 2e-5, weight decay 0.01, linear schedule with 6% warmup |
-| Precision | fp16 mixed precision on GPU |
+| Precision | fp16 mixed precision |
 | Seed | 42 |
 
-### Run on Colab
+`evaluate.py` and `bias_eval.py` take `--scores`, a CSV with one `score` per row
+of the evaluation file in the same order, so any model is scored with the same
+code; a file with the wrong number of rows is rejected. `log_mlflow.py
+--external-model` logs the run (tag `model_family=distilbert`) without
+registering it: the registry and the gate manage the model that Jenkins
+retrains.
 
-1. Run `dvc repro` locally so `data/processed/` exists.
-2. In Google Drive create `MyDrive/toxicity-mlops/data/` and upload
-   `data/processed/train.csv`, `valid.csv` and `identity_eval.parquet`.
-3. Open `notebooks/train_distilbert_colab.ipynb` in Colab
-   (*File > Upload notebook*), select a GPU runtime, and run all cells.
-   Outputs go to `MyDrive/toxicity-mlops/distilbert_out/`.
+### Tests (`tests/`)
 
-The script also runs on any machine with a CUDA GPU:
-`pip install torch transformers==5.21.0`, then
-`python src/train_distilbert.py --data-dir data/processed --out-dir distilbert_out`.
-
-### Evaluate and log
-
-Download `distilbert_out/` from Drive into the repository root, then score it
-with the **same** evaluation code as the baseline:
-
-```bash
-python src/evaluate.py  --scores distilbert_out/valid_scores.csv         --out-dir metrics/distilbert
-python src/bias_eval.py --scores distilbert_out/identity_eval_scores.csv --out-dir metrics/distilbert
-python src/log_mlflow.py --run-name distilbert --metrics-dir metrics/distilbert --external-model distilbert_out
-```
-
-`--scores` takes a CSV with one `score` per row of the evaluation file, in the
-same order; a file with the wrong number of rows is rejected. The MLflow run
-gets tag `model_family=distilbert`, its training config as `distilbert.*`
-params, and the model files under the `external_model/` artifact folder. Compare
-it with the baseline by selecting both runs in the MLflow UI and clicking
-**Compare**. The DistilBERT run is not registered: the registry and the
-fairness gate in Jenkins manage the TF-IDF model that the pipeline retrains.
-
-## 9. Hyperparameter search (MLflow experiment tracking)
-
-`src/tune.py` runs a small grid search over the logistic regression
-hyperparameters. Trials train on a 40,000-row subsample (`tuning.train_rows`).
-
-```bash
-python src/tune.py
-```
-
-| Grid (`tuning.grid` in `params.yaml`) | Values |
+| File | Covers |
 |---|---|
-| `C` | 0.5, 1.0, 4.0 |
-| `class_weight` | balanced, none |
-
-Each of the 6 trials is a **nested child run** under one parent run
-(`tfidf-grid-search`) in the MLflow experiment **`toxicity-tuning`**, with its
-params, validation metrics (ROC-AUC, F1, precision, recall), and bias metrics on
-the identity hold-out (final score, power means, per-subgroup AUCs, and
-`min_bpsn_auc`). The results table is saved as `metrics/tuning/results.csv` and
-attached to the parent run.
-
-To compare trials in the UI: open `toxicity-tuning`, expand the parent run,
-select the child runs, click **Compare**, and use the **Parallel Coordinates**
-or **Scatter Plot** views (for example `C` against `valid_roc_auc` and
-`min_bpsn_auc`).
-
-## 10. Fairness gate demo: a more accurate model that is blocked
-
-Two candidates are retrained on more data (`MAX_ROWS=400000`, double the
-production model's 200,000) and gated against production. They differ only in
-how the training rows are used (`candidate` in `params.yaml`):
-
-| Candidate | `CANDIDATE` | What changes in training |
-|---|---|---|
-| A | `imbalanced` | half of the **non-toxic** comments mentioning Muslims are dropped, so the model sees that identity mostly in toxic contexts |
-| B | `reweighted` | **non-toxic** comments mentioning any identity get sample weight 2, targeting the false positives BPSN measures |
-
-Identity mentions are found by whole-word matching against the term lists in
-`params.yaml`.
-
-### Run it
-
-On a fresh Jenkins + MLflow setup, run these three builds in order with
-**Build with Parameters**, each after the previous one has finished (leave
-`MAX_ROWS` empty on the first):
-
-| # | `CANDIDATE` | `MAX_ROWS` | Result |
-|---|---|---|---|
-| 1 | `standard` | *(empty)* | passes, becomes `@production` (the 200k production model) |
-| 2 | `imbalanced` | `400000` | **blocked** at Fairness Gate |
-| 3 | `reweighted` | `400000` | passes and is promoted to `@production` |
-
-The very first build of a new job may run with the defaults before Jenkins has
-read the parameters; that is a `standard` build and counts as build 1.
-
-To run the demo again, point `@production` back at the build 1 version first
-(a registry rollback), with the MLflow server running:
-
-```bash
-python -c "from mlflow import MlflowClient; MlflowClient('http://127.0.0.1:5000').set_registered_model_alias('toxicity-classifier', 'production', '<version>')"
-```
-
-### Results
-
-All three models are scored on the same 100k identity hold-out:
-
-| Model | Overall AUC | Final score | muslim BPSN | Lowest BPSN | Gate |
-|---|---|---|---|---|---|
-| Production, v2 (standard, 200k) | 0.9047 | 0.8624 | 0.775 | 0.734 (white) | n/a |
-| A: imbalanced, 400k, v4 | **0.9101 (+0.0054)** | **0.8670 (+0.0046)** | **0.724 (-0.051)** | 0.724 (muslim) | **BLOCKED**: `muslim.bpsn_auc` -0.051, `transgender.subgroup_auc` -0.011 |
-| B: reweighted, 400k, v5 | 0.9066 (+0.0019) | 0.8692 (+0.0068) | 0.812 (+0.037) | 0.776 (black) | **PASSED**, BPSN improves for all 12 subgroups; promoted to `@production` |
-
-Candidate A is better on overall AUC and on the final score, yet the gate
-blocks it because one subgroup regresses. The blocked version is tagged
-`gate=blocked` in the registry with the failed checks. Its second failed check,
-`transgender.subgroup_auc`, is on a 630-row subgroup close to the 500-row
-cutoff, where AUCs are noisy.
-
-## 11. Tests
-
-```bash
-pytest -q tests
-```
-
-- `tests/test_bias_metrics.py` checks every metric against values counted by
-  hand on a small golden fixture.
-- `tests/test_fairness_gate.py` covers promotion, blocking on each check
-  (including a more accurate model that regresses one subgroup), tolerance
-  edges, a missing subgroup, no production baseline, and the CLI exit codes.
-- `tests/test_mlflow_registry.py` checks the logged params/metrics and the
-  fetch-baseline / promote / reject registry flow against a temporary SQLite
-  store (no server needed).
-- `tests/test_candidates.py` checks identity-term matching and the
-  standard / imbalanced / reweighted training strategies.
+| `test_bias_metrics.py` | every bias metric against values counted by hand on a small fixture |
+| `test_fairness_gate.py` | promotion, blocking on each check (including a more accurate model that regresses one subgroup), tolerance edges, a missing subgroup, no production model, CLI exit codes |
+| `test_mlflow_registry.py` | logged params/metrics and the fetch-baseline / promote / reject flow against a temporary SQLite store |
+| `test_candidates.py` | identity-term matching and the three training strategies |
