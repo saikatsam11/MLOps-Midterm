@@ -90,8 +90,8 @@ pipeline {
             python -c "import yaml,sys; p=yaml.safe_load(open('params.yaml')); p['data']['max_rows']=int(sys.argv[1]); yaml.safe_dump(p, open('params.yaml','w'), sort_keys=False)" "$MAX_ROWS"
             echo "data.max_rows overridden to $MAX_ROWS"
           fi
-          python -c "import yaml,sys; p=yaml.safe_load(open('params.yaml')); p['candidate']['strategy']=sys.argv[1]; yaml.safe_dump(p, open('params.yaml','w'), sort_keys=False)" "$CANDIDATE"
-          echo "candidate.strategy set to $CANDIDATE"
+          python -c "import yaml,sys; p=yaml.safe_load(open('params.yaml')); p['candidate']['strategy']=sys.argv[1]; yaml.safe_dump(p, open('params.yaml','w'), sort_keys=False)" "${CANDIDATE:-standard}"
+          echo "candidate.strategy set to ${CANDIDATE:-standard}"
           dvc repro
         '''
       }
@@ -101,7 +101,7 @@ pipeline {
       steps {
         sh '''
           . "$VENV/bin/activate"
-          python src/log_mlflow.py --run-name "${RUN_LABEL:-$CANDIDATE}"
+          python src/log_mlflow.py --run-name "${RUN_LABEL:-${CANDIDATE:-standard}}"
         '''
       }
     }
