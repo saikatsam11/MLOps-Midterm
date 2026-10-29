@@ -128,7 +128,61 @@ muslim.bpsn_auc      0.7451   0.7751  -0.0300  -0.0100  FAIL
 FAIRNESS GATE BLOCKED: 1 check(s) regressed: muslim.bpsn_auc
 ```
 
-## 6. Tests
+## 6. MLflow tracking and model registry
+
+### Start the tracking server
+
+```bash
+mlflow server --backend-store-uri sqlite:///mlflow.db --artifacts-destination ./mlartifacts --host 127.0.0.1 --port 5000
+```
+
+UI: <http://127.0.0.1:5000>. Runs and the registry live in `mlflow.db`, model
+files in `mlartifacts/` (both git-ignored). Scripts use
+`$MLFLOW_TRACKING_URI`, defaulting to `http://127.0.0.1:5000`.
+
+### Log, gate and promote a model
+
+After `dvc repro`:
+
+```bash
+python src/log_mlflow.py --run-name baseline        # 1. log run, register new version, alias @staging
+python scripts/promote.py fetch-baseline            # 2. download @production's bias.json (none on first run)
+python scripts/fairness_gate.py --candidate metrics/bias.json --production metrics/prod_bias.json   # 3. gate
+python scripts/promote.py promote                   # 4a. gate passed: move @production to the candidate
+python scripts/promote.py reject                    # 4b. gate blocked: tag the candidate as blocked
+```
+
+| Logged to each run | |
+|---|---|
+| Params | every value in `params.yaml` (flattened, e.g. `model.C`, `bias.power`) |
+| Metrics | validation AUC / F1 / precision / recall, best threshold, overall AUC and final score on the identity hold-out, power means, and `<identity>.subgroup_auc` / `.bpsn_auc` / `.bnsp_auc` for every eligible subgroup |
+| Curves | `sweep_precision`, `sweep_recall`, `sweep_f1` over the threshold sweep (step = threshold x 100) |
+| Tags | `candidate`, `git_commit`, `data_md5`, `model_family`, `jenkins_build` (when run in Jenkins) |
+| Artifacts | `metrics/metrics.json`, `metrics/bias.json`, `params.yaml`, `model_metadata.json`, and the model |
+
+### Registry
+
+The model is registered as **`toxicity-classifier`**: an MLflow pyfunc that
+bundles both TF-IDF vectorizers and the classifier (`src/toxicity_pyfunc.py`).
+Lifecycle uses registry aliases (MLflow 3 replaces stages with aliases):
+
+| Alias | Meaning |
+|---|---|
+| `@staging` | most recently logged candidate |
+| `@production` | the model that passed the fairness gate and is serving |
+
+Blocked candidates are tagged `gate=blocked` with the failed checks in
+`gate_failed`; promoted ones are tagged `gate=passed`.
+
+Load the production model anywhere:
+
+```python
+import mlflow, pandas as pd
+model = mlflow.pyfunc.load_model("models:/toxicity-classifier@production")
+model.predict(pd.DataFrame({"comment_text": ["I am a gay man."]}))
+```
+
+## 7. Tests
 
 ```bash
 pytest -q tests
@@ -139,3 +193,6 @@ pytest -q tests
 - `tests/test_fairness_gate.py` covers promotion, blocking on each check
   (including a more accurate model that regresses one subgroup), tolerance
   edges, a missing subgroup, no production baseline, and the CLI exit codes.
+- `tests/test_mlflow_registry.py` checks the logged params/metrics and the
+  fetch-baseline / promote / reject registry flow against a temporary SQLite
+  store (no server needed).

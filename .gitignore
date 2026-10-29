@@ -14,3 +14,7 @@ mlruns/
 .env
 artifacts/
 metrics/gate_report.json
+metrics/mlflow_run.json
+metrics/prod_bias.json
+mlflow.db
+mlartifacts/
