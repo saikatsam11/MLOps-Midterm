@@ -21,9 +21,6 @@ jobs:
     name: Test, train, evaluate and promote
     runs-on: ubuntu-latest
 
-    env:
-      GDRIVE_CREDENTIALS_DATA: ${{ secrets.GDRIVE_CREDENTIALS_DATA }}
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -37,13 +34,28 @@ jobs:
             requirements-train.txt
             requirements-api.txt
 
-      - name: Install training and pipeline dependencies
+      # Training environment
+      # requirements-train.txt should NOT contain dvc[gdrive].
+      - name: Create training environment
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements-train.txt
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/pip install -r requirements-train.txt
+          .venv/bin/pip install -r requirements-api.txt
+          .venv/bin/pip check
 
-      - name: Configure Google Drive service account for DVC
+      # Separate DVC environment for Google Drive authentication
+      - name: Create DVC environment
+        run: |
+          python -m venv .dvc-venv
+          .dvc-venv/bin/python -m pip install --upgrade pip
+          .dvc-venv/bin/pip install "dvc[gdrive]"
+          .dvc-venv/bin/pip check
+
+      - name: Validate Google service account credentials
         shell: bash
+        env:
+          GDRIVE_CREDENTIALS_DATA: ${{ secrets.GDRIVE_CREDENTIALS_DATA }}
         run: |
           if [ -z "$GDRIVE_CREDENTIALS_DATA" ]; then
             echo "GDRIVE_CREDENTIALS_DATA secret is missing."
@@ -56,48 +68,58 @@ jobs:
           import json
           import os
 
-          path = os.path.join(os.environ["RUNNER_TEMP"], "gdrive-service-account.json")
-          with open(path, "r", encoding="utf-8") as f:
-              credentials = json.load(f)
+          credentials_path = os.path.join(
+              os.environ["RUNNER_TEMP"],
+              "gdrive-service-account.json"
+          )
+
+          with open(credentials_path, "r", encoding="utf-8") as file:
+              credentials = json.load(file)
 
           if credentials.get("type") != "service_account":
-              raise SystemExit("The supplied Google credentials are not a service-account JSON file.")
+              raise SystemExit(
+                  "GDRIVE_CREDENTIALS_DATA must contain a Google service-account JSON key."
+              )
 
           print("Google service-account JSON is valid.")
           PY
 
-          dvc remote modify --local gdrive gdrive_use_service_account true
-          dvc remote modify --local gdrive gdrive_service_account_json_file_path "$RUNNER_TEMP/gdrive-service-account.json"
-
-      - name: Check dependency compatibility
-        run: pip check
+      - name: Configure DVC Google Drive authentication
+        run: |
+          .dvc-venv/bin/dvc remote modify --local gdrive gdrive_use_service_account true
+          .dvc-venv/bin/dvc remote modify --local gdrive gdrive_service_account_json_file_path "$RUNNER_TEMP/gdrive-service-account.json"
 
       - name: Pull data and model dependencies from DVC
-        run: dvc pull
+        run: |
+          .dvc-venv/bin/dvc pull
 
       - name: Reproduce DVC pipeline
-        run: dvc repro
+        shell: bash
+        run: |
+          export PATH="$GITHUB_WORKSPACE/.venv/bin:$PATH"
+          .dvc-venv/bin/dvc repro
 
       - name: Run Python tests
         run: |
-          pytest -q --junitxml=test-results.xml
+          .venv/bin/python -m pytest -q --junitxml=test-results.xml
 
       - name: Fetch production fairness baseline
         run: |
-          python scripts/promote.py fetch-baseline --out metrics/prod_bias.json
+          .venv/bin/python scripts/promote.py fetch-baseline --out metrics/prod_bias.json
 
       - name: Run fairness gate
         run: |
-          python scripts/fairness_gate.py \
+          .venv/bin/python scripts/fairness_gate.py \
             --candidate metrics/bias.json \
             --production metrics/prod_bias.json
 
       - name: Promote candidate model
         run: |
-          python scripts/promote.py promote
+          .venv/bin/python scripts/promote.py promote
 
       - name: Check DVC working tree
-        run: dvc status
+        run: |
+          .dvc-venv/bin/dvc status
 
       - name: Upload model and evaluation artifacts
         uses: actions/upload-artifact@v4

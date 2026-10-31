@@ -6,7 +6,6 @@ joblib
 PyYAML
 pyarrow
 mlflow
-dvc[gdrive]
 pyOpenSSL
 cryptography
 pytest
