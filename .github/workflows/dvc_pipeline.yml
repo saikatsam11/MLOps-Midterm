@@ -1,3 +1,4 @@
+
 name: MLOps CI/CD
 
 on:
@@ -35,7 +36,6 @@ jobs:
             requirements-api.txt
 
       # Training environment
-      # requirements-train.txt should NOT contain dvc[gdrive].
       - name: Create training environment
         run: |
           python -m venv .venv
@@ -44,7 +44,7 @@ jobs:
           .venv/bin/pip install -r requirements-api.txt
           .venv/bin/pip check
 
-      # Separate DVC environment for Google Drive authentication
+      # Separate DVC environment
       - name: Create DVC environment
         run: |
           python -m venv .dvc-venv
@@ -68,18 +68,16 @@ jobs:
           import json
           import os
 
-          credentials_path = os.path.join(
+          path = os.path.join(
               os.environ["RUNNER_TEMP"],
               "gdrive-service-account.json"
           )
 
-          with open(credentials_path, "r", encoding="utf-8") as file:
-              credentials = json.load(file)
+          with open(path, "r", encoding="utf-8") as f:
+              credentials = json.load(f)
 
           if credentials.get("type") != "service_account":
-              raise SystemExit(
-                  "GDRIVE_CREDENTIALS_DATA must contain a Google service-account JSON key."
-              )
+              raise SystemExit("Invalid Google service-account JSON.")
 
           print("Google service-account JSON is valid.")
           PY
@@ -87,7 +85,36 @@ jobs:
       - name: Configure DVC Google Drive authentication
         run: |
           .dvc-venv/bin/dvc remote modify --local gdrive gdrive_use_service_account true
+
           .dvc-venv/bin/dvc remote modify --local gdrive gdrive_service_account_json_file_path "$RUNNER_TEMP/gdrive-service-account.json"
+
+      # Diagnostic step for GEN_EMAIL
+      - name: Diagnose DVC and OpenSSL dependencies
+        run: |
+          echo "===== Installed DVC dependencies ====="
+
+          .dvc-venv/bin/pip show dvc dvc-gdrive PyDrive2 oauth2client pyOpenSSL cryptography
+
+          echo "===== Dependency compatibility ====="
+
+          .dvc-venv/bin/pip check
+
+          echo "===== OpenSSL diagnostic ====="
+
+          .dvc-venv/bin/python - <<'PY'
+          import OpenSSL
+          import OpenSSL.crypto
+
+          print("OpenSSL location:", OpenSSL.__file__)
+          print("Crypto location:", OpenSSL.crypto.__file__)
+          print("GEN_EMAIL exists:", hasattr(OpenSSL.crypto, "GEN_EMAIL"))
+
+          try:
+              import cryptography
+              print("Cryptography location:", cryptography.__file__)
+          except Exception as e:
+              print("Cryptography import error:", repr(e))
+          PY
 
       - name: Pull data and model dependencies from DVC
         run: |
