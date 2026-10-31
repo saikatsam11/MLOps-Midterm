@@ -3,7 +3,7 @@ data:
   text_column: comment_text
   score_column: target
   label_column: toxic
-  target_threshold: 0.5
+  target_threshold: 0.6
   max_rows: 200000
   random_state: 42
   validation_size: 0.20

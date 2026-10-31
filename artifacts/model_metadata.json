@@ -5,28 +5,28 @@
   "text_column": "comment_text",
   "source_score_column": "target",
   "target_column": "toxic",
-  "target_rule": "target >= 0.5",
+  "target_rule": "target >= 0.6",
   "random_state": 42,
   "max_rows": 200000,
   "validation_size": 0.2,
   "default_threshold": 0.5,
-  "best_threshold": 0.6400000000000001,
-  "validation_best_f1_threshold": 0.6400000000000001,
+  "best_threshold": 0.5800000000000001,
+  "validation_best_f1_threshold": 0.5800000000000001,
   "validation_metrics_at_0_5": {
-    "accuracy": 0.93485,
-    "precision": 0.5732538330494037,
-    "recall": 0.6467008327994875,
-    "f1": 0.6077664057796508,
-    "roc_auc": 0.9288007500813233,
-    "average_precision": 0.6763118819055318
+    "accuracy": 0.95285,
+    "precision": 0.5414653784219001,
+    "recall": 0.642925430210325,
+    "f1": 0.5878496503496503,
+    "roc_auc": 0.9332959882141952,
+    "average_precision": 0.6274428142521403
   },
   "validation_metrics_at_best_f1_threshold": {
-    "accuracy": 0.943425,
-    "precision": 0.6565803864382064,
-    "recall": 0.576873798846893,
-    "f1": 0.614151747655584,
-    "roc_auc": 0.9288007500813233,
-    "average_precision": 0.6763118819055318
+    "accuracy": 0.956625,
+    "precision": 0.5823719427780342,
+    "recall": 0.6032504780114722,
+    "f1": 0.5926273773186194,
+    "roc_auc": 0.9332959882141952,
+    "average_precision": 0.6274428142521403
   },
   "word_vectorizer": {
     "analyzer": "word",

@@ -18,7 +18,7 @@ stages:
           text_column: comment_text
           score_column: target
           label_column: toxic
-          target_threshold: 0.5
+          target_threshold: 0.6
           max_rows: 200000
           random_state: 42
           validation_size: 0.2
@@ -52,23 +52,23 @@ stages:
     outs:
     - path: data/processed/identity_eval.parquet
       hash: md5
-      md5: 4bc213c5c555e9e758b57b3b7a58969c
-      size: 24148687
+      md5: 7dbc8276085296c4c27c9edb6a86f811
+      size: 24146186
     - path: data/processed/train.csv
       hash: md5
-      md5: 143e57345e9a3d2ffd46046153c3ec40
-      size: 48649691
+      md5: 3756e8358610360ca2e964176da449ae
+      size: 48838927
     - path: data/processed/valid.csv
       hash: md5
-      md5: 92502b31debfb207306f41e44226a9ae
-      size: 12219224
+      md5: e90966a2f6991b3d7f1ece306883ffeb
+      size: 12236084
   train:
     cmd: python src/train.py
     deps:
     - path: data/processed/train.csv
       hash: md5
-      md5: 143e57345e9a3d2ffd46046153c3ec40
-      size: 48649691
+      md5: 3756e8358610360ca2e964176da449ae
+      size: 48838927
     - path: src/train.py
       hash: md5
       md5: 00dfcb87c539df1b4baad542bed6411d
@@ -173,35 +173,35 @@ stages:
     outs:
     - path: artifacts/char_tfidf_vectorizer.joblib
       hash: md5
-      md5: f794177287b2b776e2e7b2bc4d04da32
-      size: 3053092
+      md5: ba3c3a06aa52023a619386ef87a63b72
+      size: 3052958
     - path: artifacts/toxicity_logistic_regression.joblib
       hash: md5
-      md5: dcc793e9283f1dfb781d0507ba389a2c
+      md5: 1a453975d5d565ad684e70be177192c1
       size: 2400891
     - path: artifacts/word_tfidf_vectorizer.joblib
       hash: md5
-      md5: 1f839dcde3762c19dd5463738e276452
-      size: 7238822
+      md5: 2c04c1393c3450fdbf3b99ef91c54a29
+      size: 7238722
   evaluate:
     cmd: python src/evaluate.py
     deps:
     - path: artifacts/char_tfidf_vectorizer.joblib
       hash: md5
-      md5: f794177287b2b776e2e7b2bc4d04da32
-      size: 3053092
+      md5: ba3c3a06aa52023a619386ef87a63b72
+      size: 3052958
     - path: artifacts/toxicity_logistic_regression.joblib
       hash: md5
-      md5: dcc793e9283f1dfb781d0507ba389a2c
+      md5: 1a453975d5d565ad684e70be177192c1
       size: 2400891
     - path: artifacts/word_tfidf_vectorizer.joblib
       hash: md5
-      md5: 1f839dcde3762c19dd5463738e276452
-      size: 7238822
+      md5: 2c04c1393c3450fdbf3b99ef91c54a29
+      size: 7238722
     - path: data/processed/valid.csv
       hash: md5
-      md5: 92502b31debfb207306f41e44226a9ae
-      size: 12219224
+      md5: e90966a2f6991b3d7f1ece306883ffeb
+      size: 12236084
     - path: src/evaluate.py
       hash: md5
       md5: ed52a81291856723095fafaff893bba9
@@ -218,31 +218,31 @@ stages:
     outs:
     - path: artifacts/model_metadata.json
       hash: md5
-      md5: 6b60d075e0d397cb1a4f9eb7c569c76e
-      size: 1450
+      md5: 5b90cafcfe61f9384d4e490d5d4a1ffe
+      size: 1508
     - path: metrics/metrics.json
       hash: md5
-      md5: 4f30476cab2bbe8f4793d755b1382d99
-      size: 6980
+      md5: 8944fc915e75cd7aace10dd074ad2d23
+      size: 7235
   bias_eval:
     cmd: python src/bias_eval.py
     deps:
     - path: artifacts/char_tfidf_vectorizer.joblib
       hash: md5
-      md5: f794177287b2b776e2e7b2bc4d04da32
-      size: 3053092
+      md5: ba3c3a06aa52023a619386ef87a63b72
+      size: 3052958
     - path: artifacts/toxicity_logistic_regression.joblib
       hash: md5
-      md5: dcc793e9283f1dfb781d0507ba389a2c
+      md5: 1a453975d5d565ad684e70be177192c1
       size: 2400891
     - path: artifacts/word_tfidf_vectorizer.joblib
       hash: md5
-      md5: 1f839dcde3762c19dd5463738e276452
-      size: 7238822
+      md5: 2c04c1393c3450fdbf3b99ef91c54a29
+      size: 7238722
     - path: data/processed/identity_eval.parquet
       hash: md5
-      md5: 4bc213c5c555e9e758b57b3b7a58969c
-      size: 24148687
+      md5: 7dbc8276085296c4c27c9edb6a86f811
+      size: 24146186
     - path: src/bias_eval.py
       hash: md5
       md5: 6f3435348b547201d7cd99ca8ab3369a
@@ -288,5 +288,5 @@ stages:
     outs:
     - path: metrics/bias.json
       hash: md5
-      md5: c7bcc7c8ce82702072972f45799c326c
-      size: 2538
+      md5: 95bd008a8576e3227d38dc3b90da579b
+      size: 2633
