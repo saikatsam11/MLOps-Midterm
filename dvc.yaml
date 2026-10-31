@@ -23,10 +23,14 @@ stages:
       - features
       - model
       - candidate
+    # cache: false so git can hold the model files the API image is built from.
     outs:
-      - artifacts/word_tfidf_vectorizer.joblib
-      - artifacts/char_tfidf_vectorizer.joblib
-      - artifacts/toxicity_logistic_regression.joblib
+      - artifacts/word_tfidf_vectorizer.joblib:
+          cache: false
+      - artifacts/char_tfidf_vectorizer.joblib:
+          cache: false
+      - artifacts/toxicity_logistic_regression.joblib:
+          cache: false
 
   evaluate:
     cmd: python src/evaluate.py
@@ -41,7 +45,8 @@ stages:
       - data.label_column
       - evaluation
     outs:
-      - artifacts/model_metadata.json
+      - artifacts/model_metadata.json:
+          cache: false
     metrics:
       - metrics/metrics.json:
           cache: false
