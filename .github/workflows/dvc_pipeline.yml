@@ -48,12 +48,15 @@ jobs:
         run: |
           python -m venv .dvc-venv
           .dvc-venv/bin/python -m pip install --upgrade pip
-          .dvc-venv/bin/pip install "dvc[gdrive]" "pyOpenSSL>=25.3.0" "cryptography>=46.0.0"
+          .dvc-venv/bin/pip install "dvc[gdrive]" "pyOpenSSL==24.2.1" "cryptography==42.0.8"
           .dvc-venv/bin/pip check
           .dvc-venv/bin/python - <<'PY'
+          import cryptography
           import OpenSSL
           import OpenSSL.crypto
-          print("OpenSSL and cryptography imports succeeded:", OpenSSL.__file__)
+          print("OpenSSL import succeeded:", OpenSSL.__file__)
+          print("crypto.sign exists:", hasattr(OpenSSL.crypto, "sign"))
+          print("cryptography version:", cryptography.__version__)
           PY
 
       - name: Validate Google service account credentials
@@ -111,7 +114,7 @@ jobs:
 
           print("OpenSSL location:", OpenSSL.__file__)
           print("Crypto location:", OpenSSL.crypto.__file__)
-          print("GEN_EMAIL exists:", hasattr(OpenSSL.crypto, "GEN_EMAIL"))
+          print("crypto.sign exists:", hasattr(OpenSSL.crypto, "sign"))
 
           try:
               import cryptography
