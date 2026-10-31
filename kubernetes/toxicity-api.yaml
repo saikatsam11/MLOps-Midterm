@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: toxicity-api
+  labels:
+    app: toxicity-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: toxicity-api
+  template:
+    metadata:
+      labels:
+        app: toxicity-api
+    spec:
+      containers:
+        - name: toxicity-api
+          image: sv0702/toxicity-api:v1
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+              name: http
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "1"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 20
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: toxicity-api-service
+  labels:
+    app: toxicity-api
+spec:
+  type: NodePort
+  selector:
+    app: toxicity-api
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+      nodePort: 30081
