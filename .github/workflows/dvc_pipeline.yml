@@ -26,34 +26,35 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Configure Python
+      # 2. Setup Python
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: "pip"
 
-      # 3. Install dependencies
-      - name: Install dependencies
+      # 3. Create isolated DVC Google Drive environment
+      - name: Setup DVC Google Drive environment
         run: |
-          python -m pip install --upgrade pip
+          python -m venv .dvc-venv
 
-          pip install -r requirements-train.txt
+          .dvc-venv/bin/pip install --upgrade pip
 
-          pip install "dvc[gdrive]"
+          .dvc-venv/bin/pip install \
+            "dvc[gdrive]" \
+            "PyDrive2" \
+            "pyOpenSSL==24.2.1" \
+            "cryptography==43.0.3"
 
-          pip install "pyOpenSSL<24" "cryptography<43"
-
-          pip check
-
-      # 4. Verify installed packages
-      - name: Verify dependencies
+      # 4. Verify Google Drive dependencies
+      - name: Verify DVC dependencies
         run: |
-          pip show dvc dvc-gdrive PyDrive2 oauth2client pyOpenSSL cryptography
+          .dvc-venv/bin/python -m pip check
+          .dvc-venv/bin/dvc version
 
-          python -c "from OpenSSL import crypto; print('OpenSSL crypto imported successfully')"
+          .dvc-venv/bin/python -c \
+            "from OpenSSL import crypto; print('OpenSSL OK')"
 
-      # 5. Validate Google service-account credentials
+      # 5. Validate Google credentials
       - name: Validate Google credentials
         run: |
           python - <<'PY'
@@ -63,54 +64,50 @@ jobs:
           credentials = os.environ.get("GDRIVE_CREDENTIALS_DATA", "")
 
           if not credentials.strip():
-              raise SystemExit("GDRIVE_CREDENTIALS_DATA is empty or unavailable")
+              raise SystemExit("Google credentials are missing")
 
-          try:
-              data = json.loads(credentials)
-          except json.JSONDecodeError as e:
-              raise SystemExit(
-                  f"Invalid Google credentials JSON: line {e.lineno}, column {e.colno}"
-              )
+          data = json.loads(credentials)
 
           if data.get("type") != "service_account":
-              raise SystemExit("Expected Google service-account JSON")
+              raise SystemExit("Invalid service-account JSON")
 
-          required = [
-              "project_id",
-              "private_key",
-              "client_email",
-              "token_uri"
-          ]
-
-          missing = [key for key in required if not data.get(key)]
-
-          if missing:
-              raise SystemExit("Missing fields: " + ", ".join(missing))
-
-          print("Google service-account credentials validated successfully")
+          print("Google credentials validated successfully")
           PY
 
-      # 6. Verify DVC installation
-      - name: Verify DVC
-        run: |
-          dvc version
-
-      # 7. Download data and artifacts from Google Drive
+      # 6. Pull DVC data from Google Drive
       - name: DVC Pull
         run: |
-          dvc pull
+          .dvc-venv/bin/dvc pull
 
-      # 8. Reproduce DVC pipeline
+      # 7. Setup training environment
+      - name: Setup training environment
+        run: |
+          python -m venv .venv
+
+          .venv/bin/pip install --upgrade pip
+
+          .venv/bin/pip install -r requirements-train.txt
+
+          .venv/bin/pip install dvc
+
+      # 8. Check training dependencies
+      - name: Verify training dependencies
+        run: |
+          .venv/bin/pip check
+          .venv/bin/python -c \
+            "import mlflow; print('MLflow:', mlflow.__version__)"
+
+      # 9. Reproduce DVC pipeline
       - name: DVC Reproduce
         run: |
-          dvc repro
+          .venv/bin/dvc repro
 
-      # 9. Verify pipeline status
+      # 10. Verify DVC status
       - name: DVC Status
         run: |
-          dvc status
+          .venv/bin/dvc status
 
-      # 10. Upload pipeline artifacts
+      # 11. Upload pipeline artifacts
       - name: Upload Pipeline Artifacts
         if: always()
         uses: actions/upload-artifact@v4
