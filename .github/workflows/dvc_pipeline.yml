@@ -19,34 +19,74 @@ jobs:
       GDRIVE_CREDENTIALS_DATA: ${{ secrets.GDRIVE_CREDENTIALS_DATA }}
 
     steps:
-      # 1. Get the GitHub repository
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Configure Python
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      # 3. Install project dependencies
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-train.txt
+          pip install "dvc[gdrive]"
 
-      # 4. Verify DVC installation
-      - name: Verify DVC
-        run: dvc version
+      - name: Verify DVC installation
+        run: |
+          dvc version
+          pip show dvc-gdrive
 
-      # 5. Download data and artifacts from Google Drive
+      # Validate credentials without displaying secrets
+      - name: Validate Google credentials
+        run: |
+          python - <<'PY'
+          import os
+          import json
+
+          credentials = os.environ.get("GDRIVE_CREDENTIALS_DATA", "")
+
+          if not credentials.strip():
+              raise SystemExit("ERROR: GDRIVE_CREDENTIALS_DATA is empty or unavailable.")
+
+          try:
+              data = json.loads(credentials)
+          except json.JSONDecodeError as e:
+              raise SystemExit(
+                  f"ERROR: Invalid JSON in GitHub Secret. "
+                  f"Line {e.lineno}, column {e.colno}. "
+                  "Check that the complete raw JSON was pasted."
+              )
+
+          if data.get("type") != "service_account":
+              raise SystemExit(
+                  "ERROR: This is not a service-account JSON. "
+                  "Download a service-account key from Google Cloud."
+              )
+
+          required = [
+              "project_id",
+              "private_key",
+              "client_email",
+              "token_uri"
+          ]
+
+          missing = [key for key in required if not data.get(key)]
+
+          if missing:
+              raise SystemExit(
+                  "ERROR: Missing required fields: " + ", ".join(missing)
+              )
+
+          print("Google service-account JSON validation successful.")
+          PY
+
       - name: DVC Pull
         run: dvc pull
 
-      # 6. Execute the DVC pipeline
       - name: DVC Reproduce
         run: dvc repro
 
-      # 7. Verify pipeline status
       - name: DVC Status
         run: dvc status
