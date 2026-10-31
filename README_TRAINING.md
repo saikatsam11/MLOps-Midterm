@@ -339,6 +339,7 @@ are already committed in `metrics/distilbert/` and summarised in
 | Jenkins build fails at *Reproduce Pipeline* with `exited with 137` | Docker ran out of memory. Do Step 4a. |
 | **Build with Parameters** does not show `CANDIDATE` | Jenkins reads the parameters during the first build. Run one build with the defaults first. |
 | A second MLflow server will not start on port 5000 | The Jenkins stack already serves MLflow there; use <http://localhost:5000>. |
+| `dvc repro` fails with "output ... is already tracked by SCM" | A pipeline output was committed to git. Run `git rm --cached <file>` and commit, or mark the output `cache: false` in `dvc.yaml` if git must keep it. |
 | Stop everything | `docker compose -f jenkins/docker-compose.yml down` (add `-v` to also delete all Jenkins and MLflow data). |
 
 ---
