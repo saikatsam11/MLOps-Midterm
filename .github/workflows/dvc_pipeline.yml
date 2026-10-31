@@ -42,13 +42,17 @@ jobs:
           .venv/bin/pip install -r requirements-train.txt
           .venv/bin/pip install -r requirements-api.txt
           .venv/bin/pip check
+          .venv/bin/python - <<'PY'
+          from fastapi.testclient import TestClient
+          print("FastAPI TestClient import succeeded")
+          PY
 
       # Separate DVC environment
       - name: Create DVC environment
         run: |
           python -m venv .dvc-venv
           .dvc-venv/bin/python -m pip install --upgrade pip
-          .dvc-venv/bin/pip install "dvc[gdrive]" "pyOpenSSL==24.2.1" "cryptography==42.0.8"
+          .dvc-venv/bin/pip install "dvc[gdrive]" "pyOpenSSL==24.2.1" "cryptography==43.0.3"
           .dvc-venv/bin/pip check
           .dvc-venv/bin/python - <<'PY'
           import cryptography

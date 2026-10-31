@@ -5,7 +5,8 @@ scikit-learn
 joblib
 PyYAML
 pyarrow
-mlflow
+mlflow==3.17.2
+sqlalchemy<2.1,>=2.0
 pyOpenSSL==24.2.1
-cryptography==42.0.8
+cryptography==43.0.3
 pytest
