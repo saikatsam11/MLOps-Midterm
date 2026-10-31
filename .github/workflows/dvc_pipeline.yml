@@ -33,8 +33,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install "dvc[gdrive]"
+          pip install -r requirements-train.txt
 
       # 4. Verify DVC installation
       - name: Verify DVC
