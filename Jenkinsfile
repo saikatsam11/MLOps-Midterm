@@ -16,6 +16,12 @@ pipeline {
            description: 'API image name used when DEPLOY is enabled')
   }
 
+  // Check the repository every 5 minutes and build when there is a new commit.
+  // Triggered builds use the default parameters (standard candidate, gated).
+  triggers {
+    pollSCM('H/5 * * * *')
+  }
+
   options {
     timestamps()
     disableConcurrentBuilds()

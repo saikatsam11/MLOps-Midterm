@@ -226,6 +226,12 @@ The same numbers as Step 3, now produced in a clean Linux container.
 - **Models > `toxicity-classifier`**: version 1 with the aliases `@production`
   and `@staging`.
 
+**Automatic builds.** After the first build, Jenkins checks the repository every
+5 minutes (`pollSCM` in the `Jenkinsfile`). When a new commit lands on the
+branch the job watches, a build starts by itself with the default parameters,
+and the build page shows **Started by an SCM change**. You can see the polling
+log under **Git Polling Log** in the job's menu.
+
 ---
 
 ## Step 7. Fairness gate demo
@@ -525,9 +531,12 @@ After every build, `metrics/*.json` (including `bias.json` and
 `gate_report.json`), `dvc.lock`, `params.yaml` and the test report are archived
 with the build, so a blocked build keeps the evidence of why it was blocked.
 
-To build on every `git push`, enable **GitHub hook trigger for GITScm polling**
-in the job and add a GitHub webhook to `https://<public-jenkins-host>/github-webhook/`
-(a local Jenkins needs a tunnel such as ngrok).
+The `triggers { pollSCM('H/5 * * * *') }` block makes Jenkins poll the
+repository every 5 minutes and build each new commit with the default
+parameters, so every change is retrained and gated against production. Polling
+works on a local Jenkins with no public URL. A Jenkins with a public URL can use
+a GitHub webhook to `https://<jenkins-host>/github-webhook/` instead, which
+builds immediately on push.
 
 ### DistilBERT (`src/train_distilbert.py`)
 
