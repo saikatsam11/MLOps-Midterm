@@ -565,3 +565,5 @@ retrains.
 | `test_fairness_gate.py` | promotion, blocking on each check (including a more accurate model that regresses one subgroup), tolerance edges, a missing subgroup, no production model, CLI exit codes |
 | `test_mlflow_registry.py` | logged params/metrics and the fetch-baseline / promote / reject flow against a temporary SQLite store |
 | `test_candidates.py` | identity-term matching and the three training strategies |
+
+All 34 tests run in the Jenkins **Unit Tests** stage, and the JUnit report is shown on each build page.
