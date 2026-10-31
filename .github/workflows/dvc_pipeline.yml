@@ -18,12 +18,12 @@ on:
         default: standard
 
       MAX_ROWS:
-        description: Override maximum dataset rows (leave empty for params.yaml)
+        description: Override maximum dataset rows
         type: string
         default: ""
 
       RUN_LABEL:
-        description: MLflow run label
+        description: Run label
         type: string
         default: ""
 
@@ -43,23 +43,22 @@ jobs:
 
     env:
       GDRIVE_CREDENTIALS_DATA: ${{ secrets.GDRIVE_CREDENTIALS_DATA }}
-      MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
       PYTHONUNBUFFERED: "1"
 
     steps:
 
-      # 1. Checkout
-      - name: Checkout repository
+      # 1. Checkout repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # 2. Python setup
+      # 2. Setup Python
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
       # 3. Install training dependencies
-      - name: Setup training environment
+      - name: Setup Training Environment
         run: |
           python -m venv .venv
 
@@ -69,8 +68,8 @@ jobs:
 
           .venv/bin/pip install pytest httpx
 
-      # 4. Install isolated DVC Google Drive environment
-      - name: Setup DVC environment
+      # 4. Install isolated DVC environment
+      - name: Setup DVC Environment
         run: |
           python -m venv .dvc-venv
 
@@ -78,15 +77,26 @@ jobs:
 
           .dvc-venv/bin/pip install "dvc[gdrive]"
 
-          # Compatibility pins for the legacy Google Drive OAuth stack.
           .dvc-venv/bin/pip install \
-            "pyOpenSSL==22.1.0" \
-            "cryptography==38.0.4"
+            "pyOpenSSL==26.4.0" \
+            "cryptography==50.0.2"
 
           .dvc-venv/bin/pip check
 
-      # 5. Validate Google credentials
-      - name: Validate Google credentials
+      # 5. Verify dependencies
+      - name: Verify DVC Dependencies
+        run: |
+          .dvc-venv/bin/pip show \
+            dvc-gdrive PyDrive2 oauth2client \
+            pyOpenSSL cryptography
+
+          .dvc-venv/bin/dvc version
+
+          .dvc-venv/bin/python -c \
+            "from OpenSSL import crypto; print('OpenSSL imported successfully')"
+
+      # 6. Validate Google service account
+      - name: Validate Google Credentials
         run: |
           python - <<'PY'
           import os
@@ -95,14 +105,14 @@ jobs:
           raw = os.environ.get("GDRIVE_CREDENTIALS_DATA", "")
 
           if not raw.strip():
-              raise SystemExit("Google service-account secret is missing")
+              raise SystemExit("Google credentials are missing")
 
           try:
               data = json.loads(raw)
           except json.JSONDecodeError as e:
               raise SystemExit(
-                  f"Invalid Google credentials JSON: "
-                  f"line {e.lineno}, column {e.colno}"
+                  f"Invalid credentials JSON at line {e.lineno}, "
+                  f"column {e.colno}"
               )
 
           if data.get("type") != "service_account":
@@ -122,15 +132,10 @@ jobs:
                   "Missing credential fields: " + ", ".join(missing)
               )
 
-          print("Google service-account JSON validated")
+          print("Google service-account credentials validated")
           PY
 
-      # 6. Verify DVC
-      - name: Verify DVC installation
-        run: |
-          .dvc-venv/bin/dvc version
-
-      # 7. Pull dataset and artifacts
+      # 7. DVC Pull
       - name: DVC Pull
         run: |
           .dvc-venv/bin/dvc pull
@@ -160,7 +165,7 @@ jobs:
           PATH="$GITHUB_WORKSPACE/.venv/bin:$PATH" \
             .dvc-venv/bin/dvc repro
 
-      # 9. Python unit and API tests
+      # 9. Run Python tests
       - name: Run Python Tests
         run: |
           mkdir -p reports
@@ -169,25 +174,14 @@ jobs:
             -v \
             --junitxml=reports/junit.xml
 
-      # 10. Log experiment to MLflow
-      - name: Log to MLflow
-        env:
-          RUN_LABEL: ${{ inputs.RUN_LABEL }}
-          CANDIDATE: ${{ inputs.CANDIDATE || 'standard' }}
-        run: |
-          LABEL="${RUN_LABEL:-$CANDIDATE}"
-
-          .venv/bin/python src/log_mlflow.py \
-            --run-name "$LABEL"
-
-      # 11. Fetch production baseline
+      # 10. Fetch production baseline
       - name: Fetch Production Baseline
         run: |
           .venv/bin/python scripts/promote.py \
             fetch-baseline \
             --out metrics/prod_bias.json
 
-      # 12. Fairness gate
+      # 11. Fairness Gate
       - name: Fairness Gate
         run: |
           if .venv/bin/python scripts/fairness_gate.py \
@@ -205,18 +199,18 @@ jobs:
 
           fi
 
-      # 13. Promote model
+      # 12. Promote model
       - name: Promote Model
         run: |
           .venv/bin/python scripts/promote.py promote
 
-      # 14. Verify DVC status
+      # 13. DVC status
       - name: DVC Status
         run: |
           PATH="$GITHUB_WORKSPACE/.venv/bin:$PATH" \
             .dvc-venv/bin/dvc status
 
-      # 15. Upload test reports
+      # 14. Upload test reports
       - name: Publish Test Results
         if: always()
         uses: actions/upload-artifact@v4
@@ -224,8 +218,9 @@ jobs:
           name: pytest-results
           path: reports/junit.xml
           if-no-files-found: warn
+          retention-days: 7
 
-      # 16. Upload trained model artifacts for CD
+      # 15. Upload model artifacts for CD
       - name: Upload Model Artifacts
         if: success()
         uses: actions/upload-artifact@v4
@@ -244,14 +239,14 @@ jobs:
   # ==========================================
 
   cd:
-    name: CD - Build and Publish Docker Image
+    name: CD - Docker Hub Publishing
     runs-on: ubuntu-latest
     needs: ci
 
     steps:
 
       # 1. Checkout repository
-      - name: Checkout repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       # 2. Download trained model artifacts
@@ -279,9 +274,9 @@ jobs:
             ${{ secrets.DOCKERHUB_USERNAME }}/toxicity-api:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/toxicity-api:${{ github.sha }}
 
-      # 5. Deployment information
+      # 5. Display published image
       - name: Display Published Image
         run: |
-          echo "Docker image published successfully."
+          echo "Docker image published successfully"
           echo "${{ secrets.DOCKERHUB_USERNAME }}/toxicity-api:latest"
           echo "${{ secrets.DOCKERHUB_USERNAME }}/toxicity-api:${{ github.sha }}"
