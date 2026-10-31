@@ -6,6 +6,6 @@ joblib
 PyYAML
 pyarrow
 mlflow
-pyOpenSSL
-cryptography
+pyOpenSSL>=25.3.0
+cryptography>=46.0.0
 pytest
