@@ -6,7 +6,9 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
 COPY requirements-api.txt .
+COPY requirements-train.txt .
 
+RUN pip install --no-cache-dir -r requirements-train.txt
 RUN pip install --no-cache-dir -r requirements-api.txt
 
 COPY app.py .

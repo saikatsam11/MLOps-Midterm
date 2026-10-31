@@ -1,13 +1,12 @@
-numpy==2.5.4
-pandas==3.1.0
-scipy==1.18.1
-scikit-learn==1.9.1
-joblib==1.6.0
-PyYAML==6.0.3
-pyarrow==25.0.1
+numpy
+pandas
+scipy
+scikit-learn
+joblib
+PyYAML
+pyarrow
 mlflow==3.17.2
-dvc[gdrive]==3.67.1
-# Pinned with dvc[gdrive]: older pyOpenSSL breaks Google auth with cryptography 50
-pyOpenSSL==26.4.0
-cryptography==50.0.2
-pytest==9.2.0
+sqlalchemy<2.1,>=2.0
+pyOpenSSL==24.2.1
+cryptography==43.0.3
+pytest

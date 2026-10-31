@@ -35,7 +35,7 @@ python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -r requirements-train.txt
-python -m pip install "dvc[gdrive]" pyarrow
+python -m pip install "dvc[gdrive]" pyarrow "pyOpenSSL==24.2.1" "cryptography==43.0.3"
 ```
 
 If you already have the project's virtual environment, activate it
