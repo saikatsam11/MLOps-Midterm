@@ -1,282 +1,173 @@
-
-name: Toxicity Classification - CI/CD Pipeline
+name: MLOps CI/CD
 
 on:
   push:
     branches:
       - main
-
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
-    inputs:
-      CANDIDATE:
-        description: Training strategy
-        type: choice
-        options:
-          - standard
-          - imbalanced
-          - reweighted
-        default: standard
-
-      MAX_ROWS:
-        description: Override maximum dataset rows
-        type: string
-        default: ""
-
-      RUN_LABEL:
-        description: Run label
-        type: string
-        default: ""
 
 permissions:
   contents: read
 
+env:
+  PYTHON_VERSION: "3.x"
+  IMAGE_NAME: toxicity-api
+
 jobs:
-
-  # ==========================================
-  # CI: TESTING, DATA, TRAINING AND VALIDATION
-  # ==========================================
-
   ci:
-    name: CI - Test and Validate Model
+    name: Test, train, evaluate and promote
     runs-on: ubuntu-latest
-    timeout-minutes: 45
 
     env:
       GDRIVE_CREDENTIALS_DATA: ${{ secrets.GDRIVE_CREDENTIALS_DATA }}
-      PYTHONUNBUFFERED: "1"
 
     steps:
-
-      # 1. Checkout repository
-      - name: Checkout Repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Setup Python
-      - name: Setup Python
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            requirements-train.txt
+            requirements-api.txt
 
-      # 3. Install training dependencies
-      - name: Setup Training Environment
+      - name: Install training and pipeline dependencies
         run: |
-          python -m venv .venv
+          python -m pip install --upgrade pip
+          pip install -r requirements-train.txt
 
-          .venv/bin/pip install --upgrade pip
-
-          .venv/bin/pip install -r requirements-train.txt
-
-          .venv/bin/pip install pytest httpx
-
-      # 4. Install isolated DVC environment
-      - name: Setup DVC Environment
+      - name: Configure Google Drive service account for DVC
+        shell: bash
         run: |
-          python -m venv .dvc-venv
+          if [ -z "$GDRIVE_CREDENTIALS_DATA" ]; then
+            echo "GDRIVE_CREDENTIALS_DATA secret is missing."
+            exit 1
+          fi
 
-          .dvc-venv/bin/pip install --upgrade pip
+          printf '%s' "$GDRIVE_CREDENTIALS_DATA" > "$RUNNER_TEMP/gdrive-service-account.json"
 
-          .dvc-venv/bin/pip install "dvc[gdrive]"
-
-          .dvc-venv/bin/pip install \
-            "pyOpenSSL==26.4.0" \
-            "cryptography==50.0.2"
-
-          .dvc-venv/bin/pip check
-
-      # 5. Verify dependencies
-      - name: Verify DVC Dependencies
-        run: |
-          .dvc-venv/bin/pip show \
-            dvc-gdrive PyDrive2 oauth2client \
-            pyOpenSSL cryptography
-
-          .dvc-venv/bin/dvc version
-
-          .dvc-venv/bin/python -c \
-            "from OpenSSL import crypto; print('OpenSSL imported successfully')"
-
-      # 6. Validate Google service account
-      - name: Validate Google Credentials
-        run: |
           python - <<'PY'
-          import os
           import json
+          import os
 
-          raw = os.environ.get("GDRIVE_CREDENTIALS_DATA", "")
+          path = os.path.join(os.environ["RUNNER_TEMP"], "gdrive-service-account.json")
+          with open(path, "r", encoding="utf-8") as f:
+              credentials = json.load(f)
 
-          if not raw.strip():
-              raise SystemExit("Google credentials are missing")
+          if credentials.get("type") != "service_account":
+              raise SystemExit("The supplied Google credentials are not a service-account JSON file.")
 
-          try:
-              data = json.loads(raw)
-          except json.JSONDecodeError as e:
-              raise SystemExit(
-                  f"Invalid credentials JSON at line {e.lineno}, "
-                  f"column {e.colno}"
-              )
-
-          if data.get("type") != "service_account":
-              raise SystemExit("Expected service-account JSON")
-
-          required = [
-              "project_id",
-              "private_key",
-              "client_email",
-              "token_uri"
-          ]
-
-          missing = [key for key in required if not data.get(key)]
-
-          if missing:
-              raise SystemExit(
-                  "Missing credential fields: " + ", ".join(missing)
-              )
-
-          print("Google service-account credentials validated")
+          print("Google service-account JSON is valid.")
           PY
 
-      # 7. DVC Pull
-      - name: DVC Pull
+          dvc remote modify --local gdrive gdrive_use_service_account true
+          dvc remote modify --local gdrive gdrive_service_account_json_file_path "$RUNNER_TEMP/gdrive-service-account.json"
+
+      - name: Check dependency compatibility
+        run: pip check
+
+      - name: Pull data and model dependencies from DVC
+        run: dvc pull
+
+      - name: Reproduce DVC pipeline
+        run: dvc repro
+
+      - name: Run Python tests
         run: |
-          .dvc-venv/bin/dvc pull
+          pytest -q --junitxml=test-results.xml
 
-      # 8. Reproduce DVC pipeline
-      - name: DVC Reproduce
-        env:
-          CANDIDATE: ${{ inputs.CANDIDATE || 'standard' }}
-          MAX_ROWS: ${{ inputs.MAX_ROWS }}
+      - name: Fetch production fairness baseline
         run: |
-          if [ -n "$MAX_ROWS" ]; then
-            .venv/bin/python -c "
-          import yaml, sys
-          p = yaml.safe_load(open('params.yaml'))
-          p['data']['max_rows'] = int(sys.argv[1])
-          yaml.safe_dump(p, open('params.yaml', 'w'), sort_keys=False)
-          " "$MAX_ROWS"
-          fi
+          python scripts/promote.py fetch-baseline --out metrics/prod_bias.json
 
-          .venv/bin/python -c "
-          import yaml, sys
-          p = yaml.safe_load(open('params.yaml'))
-          p['candidate']['strategy'] = sys.argv[1]
-          yaml.safe_dump(p, open('params.yaml', 'w'), sort_keys=False)
-          " "$CANDIDATE"
-
-          PATH="$GITHUB_WORKSPACE/.venv/bin:$PATH" \
-            .dvc-venv/bin/dvc repro
-
-      # 9. Run Python tests
-      - name: Run Python Tests
+      - name: Run fairness gate
         run: |
-          mkdir -p reports
-
-          .venv/bin/python -m pytest tests \
-            -v \
-            --junitxml=reports/junit.xml
-
-      # 10. Fetch production baseline
-      - name: Fetch Production Baseline
-        run: |
-          .venv/bin/python scripts/promote.py \
-            fetch-baseline \
-            --out metrics/prod_bias.json
-
-      # 11. Fairness Gate
-      - name: Fairness Gate
-        run: |
-          if .venv/bin/python scripts/fairness_gate.py \
+          python scripts/fairness_gate.py \
             --candidate metrics/bias.json \
-            --production metrics/prod_bias.json; then
+            --production metrics/prod_bias.json
 
-            echo "Fairness gate passed."
-
-          else
-
-            .venv/bin/python scripts/promote.py reject
-
-            echo "Fairness gate failed."
-            exit 1
-
-          fi
-
-      # 12. Promote model
-      - name: Promote Model
+      - name: Promote candidate model
         run: |
-          .venv/bin/python scripts/promote.py promote
+          python scripts/promote.py promote
 
-      # 13. DVC status
-      - name: DVC Status
-        run: |
-          PATH="$GITHUB_WORKSPACE/.venv/bin:$PATH" \
-            .dvc-venv/bin/dvc status
+      - name: Check DVC working tree
+        run: dvc status
 
-      # 14. Upload test reports
-      - name: Publish Test Results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: pytest-results
-          path: reports/junit.xml
-          if-no-files-found: warn
-          retention-days: 7
-
-      # 15. Upload model artifacts for CD
-      - name: Upload Model Artifacts
-        if: success()
+      - name: Upload model and evaluation artifacts
         uses: actions/upload-artifact@v4
         with:
           name: toxicity-model-artifacts
-          path: |
-            artifacts/**
-            metrics/*.json
-            params.yaml
           if-no-files-found: error
-          retention-days: 7
+          path: |
+            artifacts/
+            metrics/bias.json
+            metrics/prod_bias.json
+            params.yaml
 
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-report
+          if-no-files-found: warn
+          path: test-results.xml
 
-  # ==========================================
-  # CD: DOCKER BUILD AND DOCKER HUB PUBLISHING
-  # ==========================================
-
-  cd:
-    name: CD - Docker Hub Publishing
+  publish:
+    name: Build and publish Docker image
     runs-on: ubuntu-latest
     needs: ci
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
 
     steps:
-
-      # 1. Checkout repository
-      - name: Checkout Repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Download trained model artifacts
-      - name: Download Model Artifacts
+      - name: Download model artifacts
         uses: actions/download-artifact@v4
         with:
           name: toxicity-model-artifacts
           path: .
 
-      # 3. Login to Docker Hub
-      - name: Login to Docker Hub
+      - name: Verify Docker build inputs
+        run: |
+          test -f docker/Dockerfile.api
+          test -f requirements-api.txt
+          test -f app.py
+          test -d artifacts
+          test -f artifacts/word_tfidf_vectorizer.joblib
+          test -f artifacts/char_tfidf_vectorizer.joblib
+          test -f artifacts/toxicity_logistic_regression.joblib
+          test -f artifacts/model_metadata.json
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # 4. Build and push Docker image
-      - name: Build and Push Docker Image
+      - name: Extract Docker image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest
+            type=sha,format=long
+
+      - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/Dockerfile.api
           push: true
-          tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/toxicity-api:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/toxicity-api:${{ github.sha }}
-
-      # 5. Display published image
-      - name: Display Published Image
-        run: |
-          echo "Docker image published successfully"
-          echo "${{ secrets.DOCKERHUB_USERNAME }}/toxicity-api:latest"
-          echo "${{ secrets.DOCKERHUB_USERNAME }}/toxicity-api:${{ github.sha }}"
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
