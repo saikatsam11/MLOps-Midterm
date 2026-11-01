@@ -101,7 +101,7 @@ dvc repro
 
 1. **Git and GitHub** — source control and pull-request code review
 2. **DVC** — versioned data and reproducible pipeline orchestration
-3. **Python, pandas, scikit-learn, and PyTorch/Transformers ecosystem** — data preparation, training, and evaluation
+3. **Python, pandas, and scikit-learn** — data preparation, training, and evaluation
 4. **MLflow** — experiment tracking and model registry support in Jenkins
 5. **pytest** — unit, API, data, fairness, and registry tests
 6. **GitHub Actions and Jenkins** — CI/CD automation
@@ -144,7 +144,6 @@ flowchart LR
 ├── kubernetes/                         # Deployment, Service, and ServiceMonitor
 ├── metrics/                            # Evaluation and bias JSON outputs
 ├── monitoring/prometheus.yml           # Prometheus scrape configuration
-├── notebooks/                          # DistilBERT Colab notebook
 ├── scripts/                            # Fairness gate and registry utilities
 ├── src/                                # Data, training, evaluation, MLflow code
 ├── tests/                              # Automated tests

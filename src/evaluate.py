@@ -52,21 +52,8 @@ def threshold_sweep(y_true, probabilities, eval_cfg):
     return rows, float(best["threshold"])
 
 
-def load_scores(path, expected_rows):
-    """Read externally computed probabilities, aligned row-for-row with the
-    evaluation file they were predicted on."""
-    scores = pd.read_csv(path)["score"].to_numpy(dtype=float)
-    if len(scores) != expected_rows:
-        raise ValueError(f"{path} has {len(scores)} scores, expected {expected_rows}")
-    return scores
-
-
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--scores", default=None,
-                   help="CSV with a `score` column, one row per valid.csv row in the same "
-                        "order (e.g. DistilBERT predictions). Default: score with the "
-                        "TF-IDF artifacts.")
     p.add_argument("--out-dir", default=str(ROOT / "metrics"))
     a = p.parse_args()
 
@@ -83,18 +70,15 @@ def main():
     x_valid = valid_df[text_col].fillna("").astype(str)
     y_valid = valid_df[label_col].astype("int8").to_numpy()
 
-    if a.scores:
-        probabilities = load_scores(a.scores, len(valid_df))
-    else:
-        word_vectorizer = joblib.load(artifact_dir / "word_tfidf_vectorizer.joblib")
-        char_vectorizer = joblib.load(artifact_dir / "char_tfidf_vectorizer.joblib")
-        model = joblib.load(artifact_dir / "toxicity_logistic_regression.joblib")
+    word_vectorizer = joblib.load(artifact_dir / "word_tfidf_vectorizer.joblib")
+    char_vectorizer = joblib.load(artifact_dir / "char_tfidf_vectorizer.joblib")
+    model = joblib.load(artifact_dir / "toxicity_logistic_regression.joblib")
 
-        print("Transforming validation comments...")
-        x_word = word_vectorizer.transform(x_valid)
-        x_char = char_vectorizer.transform(x_valid)
-        x_valid_vec = hstack([x_word, x_char], format="csr", dtype=np.float32)
-        probabilities = model.predict_proba(x_valid_vec)[:, list(model.classes_).index(1)]
+    print("Transforming validation comments...")
+    x_word = word_vectorizer.transform(x_valid)
+    x_char = char_vectorizer.transform(x_valid)
+    x_valid_vec = hstack([x_word, x_char], format="csr", dtype=np.float32)
+    probabilities = model.predict_proba(x_valid_vec)[:, list(model.classes_).index(1)]
 
     default_threshold = float(eval_cfg["default_threshold"])
     metrics_at_default = calculate_metrics(y_valid, probabilities, default_threshold)

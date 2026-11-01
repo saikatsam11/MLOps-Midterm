@@ -5,7 +5,7 @@ This guide reproduces the modelling part of the project step by step:
 1. train the TF-IDF + logistic regression model and measure its bias with DVC,
 2. run the same pipeline in Jenkins, tracked and registered in MLflow,
 3. show the **fairness gate** blocking a more accurate but less fair model,
-4. (optional) the hyperparameter search and the DistilBERT model.
+4. (optional) a hyperparameter search tracked in MLflow.
 
 Commands are given for **Windows PowerShell** and **Linux / macOS**. Run every
 command from the repository root unless a step says otherwise.
@@ -300,35 +300,6 @@ best worst-case BPSN: accuracy and fairness pull in different directions.
 
 ---
 
-## Step 9 (optional). DistilBERT
-
-DistilBERT needs a GPU, so it is trained on Google Colab. Its evaluated results
-are already committed in `metrics/distilbert/` and summarised in
-[Results](#results); these steps retrain it.
-
-1. After Step 3, upload `data/processed/train.csv`, `data/processed/valid.csv`
-   and `data/processed/identity_eval.parquet` to a Google Drive folder named
-   `toxicity-mlops/data` (inside *My Drive*).
-2. Open <https://colab.research.google.com>, **File > Upload notebook**, choose
-   `notebooks/train_distilbert_colab.ipynb`.
-3. **Runtime > Change runtime type > T4 GPU** (any GPU works), then
-   **Runtime > Run all**. Allow Colab to access Google Drive when asked.
-4. When it finishes, download the folder `My Drive/toxicity-mlops/distilbert_out`
-   into the repository root, so that `distilbert_out/valid_scores.csv` exists.
-5. Score it with the same evaluation code as the baseline, and log it to MLflow
-   (containers from Step 4 running):
-
-   ```bash
-   python src/evaluate.py  --scores distilbert_out/valid_scores.csv         --out-dir metrics/distilbert
-   python src/bias_eval.py --scores distilbert_out/identity_eval_scores.csv --out-dir metrics/distilbert
-   python src/log_mlflow.py --run-name distilbert --metrics-dir metrics/distilbert --external-model distilbert_out
-   ```
-
-   In MLflow **Experiments > `toxicity-bias`**, select the `distilbert` run and a
-   baseline run and click **Compare**.
-
----
-
 ## Troubleshooting
 
 | Problem | Fix |
@@ -346,21 +317,21 @@ are already committed in `metrics/distilbert/` and summarised in
 
 ## Results
 
-### Baseline vs DistilBERT
+### Baseline model
 
-Same training data (160,000 rows), same validation set (40,000 rows), same
-identity hold-out (100,000 rows), same evaluation code.
+Trained on 160,000 rows, evaluated on a 40,000-row validation set and the
+100,000-row identity hold-out.
 
-| Metric | TF-IDF + LR | DistilBERT |
-|---|---|---|
-| Validation ROC-AUC | 0.929 | **0.966** |
-| Best validation F1 | 0.614 | **0.692** |
-| Identity hold-out AUC | 0.905 | **0.946** |
-| Final bias-aware score | 0.862 | **0.914** |
-| Lowest subgroup BPSN AUC | 0.734 (white) | 0.822 (homosexual_gay_or_lesbian) |
+| Metric | TF-IDF + LR |
+|---|---|
+| Validation ROC-AUC | 0.929 |
+| Best validation F1 | 0.614 |
+| Identity hold-out AUC | 0.905 |
+| Final bias-aware score | 0.862 |
+| Lowest subgroup BPSN AUC | 0.734 (white) |
 
-DistilBERT is better on every metric and every subgroup, but bias is reduced,
-not removed: BPSN is still its weakest metric.
+BPSN is the weakest metric: non-toxic comments that mention an identity are
+the ones most often over-flagged.
 
 ### Fairness gate demo (Step 7)
 
@@ -472,7 +443,7 @@ python scripts/fairness_gate.py --candidate metrics/bias.json --production <prod
 | Params | every value in `params.yaml`, flattened (e.g. `model.C`, `bias.power`) |
 | Metrics | validation AUC / F1 / precision / recall, best threshold, overall AUC and final score on the identity hold-out, power means, and `<identity>.subgroup_auc` / `.bpsn_auc` / `.bnsp_auc` for every eligible subgroup |
 | Curves | `sweep_precision`, `sweep_recall`, `sweep_f1` over the threshold sweep (step = threshold x 100) |
-| Tags | `candidate`, `git_commit`, `data_md5`, `model_family`, `jenkins_build` |
+| Tags | `candidate`, `git_commit`, `data_md5`, `jenkins_build` |
 | Artifacts | `metrics.json`, `bias.json`, `params.yaml`, `model_metadata.json`, and the model |
 
 The model is registered as **`toxicity-classifier`**: an MLflow pyfunc that
@@ -538,25 +509,6 @@ parameters, so every change is retrained and gated against production. Polling
 works on a local Jenkins with no public URL. A Jenkins with a public URL can use
 a GitHub webhook to `https://<jenkins-host>/github-webhook/` instead, which
 builds immediately on push.
-
-### DistilBERT (`src/train_distilbert.py`)
-
-| Setting | Value |
-|---|---|
-| Model | `distilbert-base-uncased`, 1 output logit |
-| Loss | `BCEWithLogitsLoss` against the continuous `target` score (soft labels: the fraction of annotators who rated the comment toxic) |
-| Data | the same 160,000 training rows as the baseline |
-| Epochs / batch / max length | 2 / 32 / 192 tokens |
-| Optimizer | AdamW, lr 2e-5, weight decay 0.01, linear schedule with 6% warmup |
-| Precision | fp16 mixed precision |
-| Seed | 42 |
-
-`evaluate.py` and `bias_eval.py` take `--scores`, a CSV with one `score` per row
-of the evaluation file in the same order, so any model is scored with the same
-code; a file with the wrong number of rows is rejected. `log_mlflow.py
---external-model` logs the run (tag `model_family=distilbert`) without
-registering it: the registry and the gate manage the model that Jenkins
-retrains.
 
 ### Tests (`tests/`)
 
