@@ -43,22 +43,13 @@ pipeline {
 
     stage('Setup') {
       steps {
+        // API packages for tests/test_api.py; DVC is pinned here because
+        // requirements-train.txt does not include it.
         sh '''
           uv venv --python 3.12 "$VENV"
-          uv pip install --python "$VENV/bin/python" -r requirements-train.txt
+          uv pip install --python "$VENV/bin/python" -r requirements-train.txt -r requirements-api.txt "dvc[gdrive]==3.67.1"
         '''
       }
-    }
-
-    stage('Unit Tests') {
-      steps {
-        sh '''
-          . "$VENV/bin/activate"
-          mkdir -p reports
-          pytest -q tests --junitxml=reports/junit.xml
-        '''
-      }
-      post { always { junit allowEmptyResults: true, testResults: 'reports/junit.xml' } }
     }
 
     stage('Fetch Data') {
@@ -101,6 +92,19 @@ pipeline {
           dvc repro
         '''
       }
+    }
+
+    // After the pipeline: tests/test_data.py reads data/processed/ and
+    // tests/test_api.py loads the trained artifacts.
+    stage('Unit Tests') {
+      steps {
+        sh '''
+          . "$VENV/bin/activate"
+          mkdir -p reports
+          python -m pytest -q tests --junitxml=reports/junit.xml
+        '''
+      }
+      post { always { junit allowEmptyResults: true, testResults: 'reports/junit.xml' } }
     }
 
     stage('Log to MLflow') {
