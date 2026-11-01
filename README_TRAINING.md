@@ -38,7 +38,7 @@ git clone https://github.com/saikatsam11/MLOps-Midterm.git
 cd MLOps-Midterm
 py -3.12 -m venv .venv
 .venv\Scripts\Activate.ps1
-python -m pip install -r requirements-train.txt
+python -m pip install -r requirements-train.txt "dvc[gdrive]==3.67.1"
 ```
 
 If PowerShell refuses to run `Activate.ps1`, run
@@ -52,13 +52,13 @@ git clone https://github.com/saikatsam11/MLOps-Midterm.git
 cd MLOps-Midterm
 python3.12 -m venv .venv
 source .venv/bin/activate
-python -m pip install -r requirements-train.txt
+python -m pip install -r requirements-train.txt "dvc[gdrive]==3.67.1"
 ```
 
 **Check:** run the unit tests.
 
 ```bash
-pytest -q tests
+pytest -q tests/test_bias_metrics.py tests/test_fairness_gate.py tests/test_mlflow_registry.py tests/test_candidates.py
 ```
 
 You should see `34 passed`. Keep this terminal open with the virtual
@@ -190,7 +190,7 @@ Jenkins.
 | Definition | Pipeline script from SCM |
 | SCM | Git |
 | Repository URL | `https://github.com/saikatsam11/MLOps-Midterm.git` |
-| Branch Specifier | `*/main` |
+| Branch Specifier | `refs/heads/main` |
 | Script Path | `Jenkinsfile` |
 
 Click **Save**.
@@ -489,7 +489,7 @@ MLflow at `http://mlflow:5000`.
 | Stage | What it does | Fails the build when |
 |---|---|---|
 | Checkout | clone the repository | |
-| Setup | Python 3.12 venv with `uv`, install `requirements-train.txt` | |
+| Setup | Python 3.12 venv with `uv`, install `requirements-train.txt` and DVC | |
 | Unit Tests | `pytest`, shown in the Jenkins test report | a test fails |
 | Fetch Data | `dvc pull train.csv`, or link the mounted copy | data unavailable |
 | Reproduce Pipeline | `dvc repro` | a stage fails |

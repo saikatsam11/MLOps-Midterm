@@ -45,17 +45,18 @@ pipeline {
       steps {
         sh '''
           uv venv --python 3.12 "$VENV"
-          uv pip install --python "$VENV/bin/python" -r requirements-train.txt
+          uv pip install --python "$VENV/bin/python" -r requirements-train.txt "dvc[gdrive]==3.67.1"
         '''
       }
     }
 
     stage('Unit Tests') {
       steps {
+        // Tests for this pipeline; the API and data tests run in GitHub Actions.
         sh '''
           . "$VENV/bin/activate"
           mkdir -p reports
-          pytest -q tests --junitxml=reports/junit.xml
+          pytest -q tests/test_bias_metrics.py tests/test_fairness_gate.py tests/test_mlflow_registry.py tests/test_candidates.py --junitxml=reports/junit.xml
         '''
       }
       post { always { junit allowEmptyResults: true, testResults: 'reports/junit.xml' } }
