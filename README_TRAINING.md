@@ -527,3 +527,5 @@ builds immediately on push.
 | `test_candidates.py` | identity-term matching and the three training strategies |
 
 These tests, together with `test_data.py` and `test_api.py` (40 in total), run in the Jenkins **Unit Tests** stage, and the JUnit report is shown on each build page.
+
+<!-- Jenkins trigger test -->
