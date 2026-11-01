@@ -85,12 +85,6 @@ def main():
     p.add_argument("--out", default="metrics/mlflow_run.json")
     p.add_argument("--metrics-dir", default="metrics",
                    help="Folder holding metrics.json and bias.json for this run")
-    p.add_argument("--external-model", default=None,
-                   help="Folder of a model trained outside the DVC pipeline (e.g. "
-                        "DistilBERT). Its files and train_config.json are "
-                        "logged for comparison; it is not registered or gated.")
-    p.add_argument("--model-family", default=None,
-                   help="Tag value; default tfidf_logreg, or distilbert with --external-model")
     a = p.parse_args()
 
     # MLflow prints emoji when a run ends; a Windows cp1252 console cannot
@@ -106,28 +100,17 @@ def main():
     bias = json.loads((metrics_dir / "bias.json").read_text(encoding="utf-8"))
     data_md5 = yaml.safe_load((ROOT / "train.csv.dvc").read_text(encoding="utf-8"))["outs"][0]["md5"]
     artifact_dir = ROOT / "artifacts"
-    external = Path(a.external_model) if a.external_model else None
 
     tags = {
         "candidate": a.run_name,
         "git_commit": git_commit(),
         "data_md5": data_md5,
-        "model_family": a.model_family or ("distilbert" if external else "tfidf_logreg"),
     }
     if os.environ.get("BUILD_TAG"):
         tags["jenkins_build"] = os.environ["BUILD_TAG"]
 
     with mlflow.start_run(run_name=a.run_name, tags=tags) as run:
-        if external:
-            # The TF-IDF feature/model params do not describe this model; log
-            # the shared data/bias settings plus its own training config.
-            train_config = json.loads((external / "train_config.json").read_text(encoding="utf-8"))
-            logged = {k: v for k, v in run_params(params).items()
-                      if k.startswith(("data.", "bias."))}
-            logged.update(flatten(train_config, "distilbert."))
-            mlflow.log_params(logged)
-        else:
-            mlflow.log_params(run_params(params))
+        mlflow.log_params(run_params(params))
         mlflow.log_metrics(run_metrics(overall, bias))
 
         # Threshold sweep as stepped metrics so the UI draws P/R/F1 curves;
@@ -139,12 +122,6 @@ def main():
 
         for path in (metrics_dir / "metrics.json", metrics_dir / "bias.json", ROOT / "params.yaml"):
             mlflow.log_artifact(str(path), artifact_path="metrics")
-
-        if external:
-            mlflow.log_artifacts(str(external), artifact_path="external_model")
-            print(f"Logged run {run.info.run_id} ({a.run_name}) to {mlflow.get_tracking_uri()}")
-            print("External model logged for comparison only (not registered).")
-            return
 
         mlflow.log_artifact(str(artifact_dir / "model_metadata.json"), artifact_path="metrics")
 

@@ -67,8 +67,7 @@ def main():
         stratify=df[label_col],
     )
 
-    # Keep the continuous score next to the binary label: the TF-IDF model
-    # uses the label, DistilBERT trains on the score as a soft label.
+    # Keep the continuous toxicity score next to the binary label.
     train_df = train_df[[text_col, score_col, label_col]].reset_index(drop=True)
     valid_df = valid_df[[text_col, score_col, label_col]].reset_index(drop=True)
     train_df.to_csv(output_dir / "train.csv", index=False)
