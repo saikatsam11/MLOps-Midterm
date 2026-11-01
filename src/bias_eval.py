@@ -110,10 +110,6 @@ def tfidf_scores(texts, artifact_dir):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--scores", default=None,
-                   help="CSV with a `score` column, one row per identity_eval.parquet row "
-                        "in the same order (e.g. DistilBERT predictions). Default: score "
-                        "with the TF-IDF artifacts.")
     p.add_argument("--out-dir", default=str(ROOT / "metrics"))
     a = p.parse_args()
 
@@ -127,13 +123,8 @@ def main():
     texts = eval_df[data_cfg["text_column"]].fillna("").astype(str)
     y_true = eval_df[data_cfg["label_column"]].astype("int8").to_numpy()
 
-    if a.scores:
-        scores = pd.read_csv(a.scores)["score"].to_numpy(dtype=float)
-        if len(scores) != len(eval_df):
-            raise ValueError(f"{a.scores} has {len(scores)} scores, expected {len(eval_df)}")
-    else:
-        print(f"Scoring {len(eval_df):,} identity-labelled comments...")
-        scores = tfidf_scores(texts, ROOT / "artifacts")
+    print(f"Scoring {len(eval_df):,} identity-labelled comments...")
+    scores = tfidf_scores(texts, ROOT / "artifacts")
 
     threshold = float(data_cfg["identity_threshold"])
     identities = {
