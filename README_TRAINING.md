@@ -38,7 +38,7 @@ git clone https://github.com/saikatsam11/MLOps-Midterm.git
 cd MLOps-Midterm
 py -3.12 -m venv .venv
 .venv\Scripts\Activate.ps1
-python -m pip install -r requirements-train.txt
+python -m pip install -r requirements-train.txt -r requirements-api.txt "dvc[gdrive]==3.67.1"
 ```
 
 If PowerShell refuses to run `Activate.ps1`, run
@@ -52,17 +52,11 @@ git clone https://github.com/saikatsam11/MLOps-Midterm.git
 cd MLOps-Midterm
 python3.12 -m venv .venv
 source .venv/bin/activate
-python -m pip install -r requirements-train.txt
+python -m pip install -r requirements-train.txt -r requirements-api.txt "dvc[gdrive]==3.67.1"
 ```
 
-**Check:** run the unit tests.
-
-```bash
-pytest -q tests
-```
-
-You should see `34 passed`. Keep this terminal open with the virtual
-environment active (the prompt starts with `(.venv)`) for the next steps.
+Keep this terminal open with the virtual environment active (the prompt
+starts with `(.venv)`) for the next steps.
 
 ---
 
@@ -100,8 +94,17 @@ Final bias-aware score: 0.8624
 
 followed by a table with the bias metrics of each identity subgroup. The
 results are written to `metrics/metrics.json` (overall metrics) and
-`metrics/bias.json` (bias metrics). Both are committed to the repository, and
-`git diff metrics/` should show no changes: the pipeline is deterministic.
+`metrics/bias.json` (bias metrics). Both are committed to the repository; the
+pipeline uses fixed seeds, so your numbers should match.
+
+**Check:** run the tests (some of them read the prepared data and the trained
+model, so they need this step first).
+
+```bash
+python -m pytest -q tests
+```
+
+You should see `40 passed`.
 
 ---
 
@@ -190,7 +193,7 @@ Jenkins.
 | Definition | Pipeline script from SCM |
 | SCM | Git |
 | Repository URL | `https://github.com/saikatsam11/MLOps-Midterm.git` |
-| Branch Specifier | `*/main` |
+| Branch Specifier | `refs/heads/main` |
 | Script Path | `Jenkinsfile` |
 
 Click **Save**.
@@ -202,8 +205,8 @@ Click **Save**.
 Open the `toxicity-cd` job and click **Build Now** (the first build always uses
 the default parameters; from then on the button is **Build with Parameters**).
 
-The build runs these stages: Checkout > Setup > Unit Tests > Fetch Data >
-Reproduce Pipeline > Log to MLflow > Fetch Production Baseline > Fairness Gate >
+The build runs these stages: Checkout > Setup > Fetch Data > Reproduce
+Pipeline > Unit Tests > Log to MLflow > Fetch Production Baseline > Fairness Gate >
 Promote. It should finish green. In the build's **Console Output** look for:
 
 ```
@@ -489,10 +492,10 @@ MLflow at `http://mlflow:5000`.
 | Stage | What it does | Fails the build when |
 |---|---|---|
 | Checkout | clone the repository | |
-| Setup | Python 3.12 venv with `uv`, install `requirements-train.txt` | |
-| Unit Tests | `pytest`, shown in the Jenkins test report | a test fails |
+| Setup | Python 3.12 venv with `uv`, install `requirements-train.txt`, `requirements-api.txt` and DVC | |
 | Fetch Data | `dvc pull train.csv`, or link the mounted copy | data unavailable |
 | Reproduce Pipeline | `dvc repro` | a stage fails |
+| Unit Tests | `pytest`, shown in the Jenkins test report (after the pipeline, because the data and API tests need its outputs) | a test fails |
 | Log to MLflow | log the run, register a new version, alias `@staging` | |
 | Fetch Production Baseline | download `@production`'s `bias.json` | |
 | Fairness Gate | compare candidate vs production; on a block, tag the version `gate=blocked` | **a gated metric regresses** |
@@ -519,4 +522,4 @@ builds immediately on push.
 | `test_mlflow_registry.py` | logged params/metrics and the fetch-baseline / promote / reject flow against a temporary SQLite store |
 | `test_candidates.py` | identity-term matching and the three training strategies |
 
-All 34 tests run in the Jenkins **Unit Tests** stage, and the JUnit report is shown on each build page.
+These tests, together with `test_data.py` and `test_api.py` (40 in total), run in the Jenkins **Unit Tests** stage, and the JUnit report is shown on each build page.
