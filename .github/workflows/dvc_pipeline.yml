@@ -99,6 +99,15 @@ jobs:
 
           .dvc-venv/bin/dvc remote modify --local gdrive gdrive_service_account_json_file_path "$RUNNER_TEMP/gdrive-service-account.json"
 
+      - name: Restore cached DVC objects
+        id: dvc-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .dvc/cache
+          key: dvc-${{ runner.os }}-${{ hashFiles('dvc.lock', 'train.csv.dvc') }}
+          restore-keys: |
+            dvc-${{ runner.os }}-
+
       # Diagnostic step for GEN_EMAIL
       - name: Diagnose DVC and OpenSSL dependencies
         run: |
@@ -130,6 +139,13 @@ jobs:
       - name: Pull data and model dependencies from DVC
         run: |
           .dvc-venv/bin/dvc pull
+
+      - name: Save DVC objects for the next run
+        if: steps.dvc-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .dvc/cache
+          key: dvc-${{ runner.os }}-${{ hashFiles('dvc.lock', 'train.csv.dvc') }}
 
       - name: Reproduce DVC pipeline
         shell: bash
