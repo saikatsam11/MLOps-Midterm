@@ -63,6 +63,9 @@ pipeline {
               sh '''
                 . "$VENV/bin/activate"
                 dvc cache dir --local /var/jenkins_home/dvc-cache
+                # .dvc/config enables a service account (used by GitHub Actions);
+                # this job signs in with a user login instead.
+                dvc remote modify --local gdrive gdrive_use_service_account false
                 set +x  # keep the token out of the build log
                 export GDRIVE_CREDENTIALS_DATA="$(cat "$GDRIVE_CREDS")"
                 set -x

@@ -63,8 +63,12 @@ starts with `(.venv)`) for the next steps.
 ## Step 2. Download the data
 
 ```bash
+dvc remote modify --local gdrive gdrive_use_service_account false
 dvc pull
 ```
+
+The first command switches DVC from the service account in `.dvc/config` to
+your own Google login, for this copy of the repository only.
 
 A browser window opens: sign in with the Google account that has access to the
 data and allow access. When the command finishes, `train.csv` is in the
