@@ -97,11 +97,6 @@ def main():
         json.dumps(output, indent=2), encoding="utf-8"
     )
 
-    if a.scores:
-        print(json.dumps({k: v for k, v in output.items() if k != "threshold_search"}, indent=2))
-        print(f"Best validation F1 threshold: {best_threshold:.2f}")
-        return
-
     # Evaluation owns model_metadata.json so DVC stages have non-overlapping outputs.
     word_cfg = params["features"]["word"]
     char_cfg = params["features"]["char"]

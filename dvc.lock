@@ -204,8 +204,8 @@ stages:
       size: 12219224
     - path: src/evaluate.py
       hash: md5
-      md5: e7eb7b2f30081c7c90c048957a41a916
-      size: 6252
+      md5: 661213c3e2ae6083edb5589447bdf11f
+      size: 6052
     params:
       params.yaml:
         data.label_column: toxic
